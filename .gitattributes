@@ -3,3 +3,4 @@
 *.jpg binary
 *.ico binary
 *.bmp binary
+prisma/migrations/**/*.sql -text
