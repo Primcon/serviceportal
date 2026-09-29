@@ -1,15 +1,15 @@
-import { UserRole } from "@prisma/client";
 import { Inbox, X } from "lucide-react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import AccessRequestApprovalForm from "@/components/access-request-approval-form";
 import { rejectAccessRequest } from "@/features/access/actions";
 import { prisma } from "@/lib/prisma";
-import { getActiveInternalUserForRoles } from "@/services/authorization";
+import { requireWorkspaceUser } from "@/services/page-access";
+import { managerRoles } from "@/features/navigation/workspace-items";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccessRequestsPage() {
-  await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
+  await requireWorkspaceUser(managerRoles);
   const [requests, companies] = await Promise.all([
     prisma.accessRequest.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "asc" } }),
     prisma.company.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),

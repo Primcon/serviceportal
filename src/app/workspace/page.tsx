@@ -2,13 +2,13 @@ import Link from "next/link";
 import { CustomerFacingStatus } from "@prisma/client";
 import { ArrowUpRight, Building2, ClipboardList, Inbox, Package, UsersRound } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { getActiveInternalUser } from "@/services/authorization";
 import { customerStatusLabels } from "@/lib/labels";
+import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
 export default async function WorkspacePage() {
-  await getActiveInternalUser();
+  await requireWorkspaceUser();
   const [workOrderCounts, equipmentCount, customerCount, pendingAccessRequests, recentWorkOrders] = await Promise.all([
     prisma.workOrder.groupBy({ by: ["customerFacingStatus"], _count: { _all: true } }),
     prisma.equipment.count(),

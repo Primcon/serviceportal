@@ -9,7 +9,7 @@ import { Field } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
 import { grantUserAccess, revokeUserAccess, updateInternalUserRole, updateUserActiveStatus } from "@/features/admin/actions";
-import { formatEnumLabel } from "@/lib/labels";
+import { roleLabels } from "@/lib/labels";
 
 type User = { id: string; displayName: string; email: string; isActive: boolean; internalRole: UserRole | null; access: { id: string; role: string; scope: string; company: { name: string }; location: { name: string } | null }[] };
 type Company = { id: string; name: string; locations: { id: string; name: string }[] };
@@ -29,7 +29,7 @@ export default function UserDirectory({ users, companies }: { users: User[]; com
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-bold">{user.displayName}</h3>
                 <Badge tone={user.isActive ? "brand" : "neutral"}>{user.isActive ? "Active" : "Disabled"}</Badge>
-                {user.internalRole && <Badge tone="outline">{formatEnumLabel(user.internalRole)}</Badge>}
+                {user.internalRole && <Badge tone="outline">{roleLabels[user.internalRole]}</Badge>}
               </div>
               <p className="mt-1 text-sm text-muted">{user.email}</p>
             </div>

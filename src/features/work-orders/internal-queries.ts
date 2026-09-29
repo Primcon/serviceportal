@@ -124,13 +124,12 @@ export async function listInternalAuditEvents(search = "", page = 1) {
   return { events, total, page: currentPage, pageSize };
 }
 
-export async function listInternalUsers(filters: { search?: string; status?: string; role?: string } = {}) {
+export async function listInternalUsers(filters: { search?: string; status?: string; role?: string; page?: number; pageSize?: number } = {}) {
   await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
   const search = filters.search?.trim() ?? "";
   const status = filters.status === "active" ? true : filters.status === "disabled" ? false : undefined;
   const role = Object.values(UserRole).includes(filters.role as UserRole) ? filters.role as UserRole : undefined;
-  return prisma.user.findMany({
-    where: {
+  const where: Prisma.UserWhereInput = {
       ...(status === undefined ? {} : { isActive: status }),
       // Role and search each need their own OR, so they are combined with AND
       // (spreading both into one object would let search overwrite the role filter).
@@ -138,8 +137,14 @@ export async function listInternalUsers(filters: { search?: string; status?: str
         ...(role ? [{ OR: [{ internalRole: role }, { access: { some: { role } } }] }] : []),
         ...(search ? [{ OR: [{ displayName: { contains: search, mode: "insensitive" as const } }, { email: { contains: search, mode: "insensitive" as const } }] }] : []),
       ],
-    },
+  };
+  const pageSize = filters.pageSize ?? 25;
+  const page = Math.max(1, Math.floor(filters.page ?? 1));
+  const [total, users] = await Promise.all([prisma.user.count({ where }), prisma.user.findMany({
+    where,
     orderBy: { displayName: "asc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize,
     select: {
       id: true,
       displayName: true,
@@ -150,5 +155,18 @@ export async function listInternalUsers(filters: { search?: string; status?: str
         select: { id: true, role: true, scope: true, company: { select: { name: true } }, location: { select: { name: true } } },
       },
     },
-  });
+  })]);
+  return { users, total, page, pageSize };
+}
+
+/** Totals for the user directory tiles, counted in the database rather than by loading every user. */
+export async function userDirectorySummary() {
+  await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
+  const [all, active, internal, customers] = await Promise.all([
+    prisma.user.count(),
+    prisma.user.count({ where: { isActive: true } }),
+    prisma.user.count({ where: { internalRole: { not: null } } }),
+    prisma.user.count({ where: { access: { some: {} } } }),
+  ]);
+  return { all, active, internal, customers };
 }

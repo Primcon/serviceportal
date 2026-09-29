@@ -1,9 +1,10 @@
-import { CustomerFacingStatus, UserRole } from "@prisma/client";
+import { CustomerFacingStatus } from "@prisma/client";
 import Link from "next/link";
 import { CheckCircle2, CirclePause, Clock3, Search, SlidersHorizontal } from "lucide-react";
 import WorkflowStageList from "@/components/workflow-stage-list";
 import { prisma } from "@/lib/prisma";
-import { getActiveInternalUserForRoles } from "@/services/authorization";
+import { requireWorkspaceUser } from "@/services/page-access";
+import { managerRoles } from "@/features/navigation/workspace-items";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ function firstParam(value: string | string[] | undefined) {
 }
 
 export default async function WorkflowPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
+  await requireWorkspaceUser(managerRoles);
   const params = await searchParams;
   const search = firstParam(params.search)?.trim() ?? "";
   const status = firstParam(params.status);

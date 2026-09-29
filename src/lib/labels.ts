@@ -1,4 +1,4 @@
-import type { CustomerFacingStatus } from "@prisma/client";
+import type { CustomerFacingStatus, UserRole } from "@prisma/client";
 
 export const customerStatusLabels: Record<CustomerFacingStatus, string> = {
   OPEN: "Open",
@@ -11,3 +11,10 @@ export const customerStatusLabels: Record<CustomerFacingStatus, string> = {
 export function formatEnumLabel(value: string) {
   return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
+
+export const roleLabels: Record<UserRole, string> = {
+  PORTAL_ADMINISTRATOR: "Portal administrator",
+  VACTECH_MANAGER: "VacTech manager",
+  VACTECH_SERVICE_USER: "VacTech service user",
+  CUSTOMER_USER: "Customer user",
+};
