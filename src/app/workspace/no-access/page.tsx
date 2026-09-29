@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { buttonStyles } from "@/components/ui/styles";
-import { formatEnumLabel } from "@/lib/labels";
+import { roleLabels } from "@/lib/labels";
 import { getWorkspaceViewer } from "@/services/page-access";
 
 export const metadata = { title: "No access · VacTech Service Portal" };
@@ -16,7 +16,7 @@ export default async function NoAccessPage() {
         <h1 className="mt-4 text-2xl font-bold">You don&apos;t have access to that page</h1>
         {viewer ? (
           <p className="mt-3 leading-7 text-muted">
-            You&apos;re signed in as a <span className="font-bold text-ink">{formatEnumLabel(viewer.internalRole)}</span>, and that page needs a different role. If you need it for your work, ask a portal administrator to change your role.
+            You&apos;re signed in as a <span className="font-bold text-ink">{roleLabels[viewer.internalRole]}</span>, and that page needs a different role. If you need it for your work, ask a portal administrator to change your role.
           </p>
         ) : (
           <p className="mt-3 leading-7 text-muted">

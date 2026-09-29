@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import type { UserRole } from "@prisma/client";
 import { LogOut, Menu, Search, X } from "lucide-react";
 import { navigationForRole } from "@/features/navigation/workspace-items";
-import { formatEnumLabel } from "@/lib/labels";
+import { roleLabels } from "@/lib/labels";
 
 type Viewer = { displayName: string; role: UserRole } | null;
 type Badges = { pendingAccessRequests: number };
@@ -64,7 +64,7 @@ function SidebarContents({ viewer, badges, onNavigate }: { viewer: Viewer; badge
         {viewer && (
           <div className="mb-3 min-w-0">
             <p className="truncate text-sm font-bold">{viewer.displayName}</p>
-            <p className="text-xs text-muted">{formatEnumLabel(viewer.role)}</p>
+            <p className="text-xs text-muted">{roleLabels[viewer.role]}</p>
           </div>
         )}
         <form action="/api/auth/logout" method="post">

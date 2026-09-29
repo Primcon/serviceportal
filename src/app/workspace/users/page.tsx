@@ -8,13 +8,12 @@ import { Pagination } from "@/components/ui/pagination";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
 import { managerRoles } from "@/features/navigation/workspace-items";
 import { listInternalUsers, userDirectorySummary } from "@/features/work-orders/internal-queries";
+import { roleLabels } from "@/lib/labels";
 import { firstParam, pageFromParams, type SearchParams } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
-
-const roleLabels: Record<UserRole, string> = { PORTAL_ADMINISTRATOR: "Portal administrator", VACTECH_MANAGER: "VacTech manager", VACTECH_SERVICE_USER: "VacTech service user", CUSTOMER_USER: "Customer user" };
 
 export default async function UsersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireWorkspaceUser(managerRoles);
