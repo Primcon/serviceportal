@@ -132,8 +132,12 @@ export async function listInternalUsers(filters: { search?: string; status?: str
   return prisma.user.findMany({
     where: {
       ...(status === undefined ? {} : { isActive: status }),
-      ...(role ? { OR: [{ internalRole: role }, { access: { some: { role } } }] } : {}),
-      ...(search ? { OR: [{ displayName: { contains: search, mode: "insensitive" } }, { email: { contains: search, mode: "insensitive" } }] } : {}),
+      // Role and search each need their own OR, so they are combined with AND
+      // (spreading both into one object would let search overwrite the role filter).
+      AND: [
+        ...(role ? [{ OR: [{ internalRole: role }, { access: { some: { role } } }] }] : []),
+        ...(search ? [{ OR: [{ displayName: { contains: search, mode: "insensitive" as const } }, { email: { contains: search, mode: "insensitive" as const } }] }] : []),
+      ],
     },
     orderBy: { displayName: "asc" },
     select: {

@@ -1,41 +1,14 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef, type ReactNode } from "react";
-import { ZodError } from "zod";
+import type { ActionResult } from "@/lib/action-result";
 
-type ActionState = {
-  status: "idle" | "success" | "error";
-  message?: string;
-  fieldErrors?: Record<string, string>;
-};
+type ActionState = { status: "idle" } | ActionResult;
 
-type ServerAction = (formData: FormData) => Promise<void>;
+type ServerAction = (formData: FormData) => Promise<ActionResult>;
 type ClientValidationResult = { message: string; fieldErrors?: Record<string, string> } | undefined;
 
-function validationErrors(error: unknown) {
-  const issues = error instanceof ZodError
-    ? error.issues
-    : error instanceof Error ? (() => {
-      try {
-        const parsed = JSON.parse(error.message);
-        return Array.isArray(parsed) ? parsed : undefined;
-      } catch {
-        return undefined;
-      }
-    })() : undefined;
-  if (!issues) return undefined;
-  const errors = issues.reduce<Record<string, string>>((fieldErrors, issue) => {
-    if (typeof issue !== "object" || issue === null || !("path" in issue) || !("message" in issue)) return fieldErrors;
-    const path = issue.path;
-    const message = issue.message;
-    const fieldName = Array.isArray(path) ? path[0] : undefined;
-    if (typeof fieldName === "string" && typeof message === "string" && !fieldErrors[fieldName]) {
-      fieldErrors[fieldName] = message.includes("expected string to have >=1 characters") ? "This field is required." : message;
-    }
-    return fieldErrors;
-  }, {});
-  return Object.keys(errors).length ? errors : undefined;
-}
+const unreachableMessage = "The portal couldn't be reached. Check your connection and try again.";
 
 export default function ActionFeedbackForm({
   action,
@@ -43,6 +16,7 @@ export default function ActionFeedbackForm({
   className,
   feedbackClassName,
   successMessage = "Saved.",
+  resetOnSuccess = false,
   validate,
 }: {
   action: ServerAction;
@@ -50,6 +24,7 @@ export default function ActionFeedbackForm({
   className?: string;
   feedbackClassName?: string;
   successMessage?: string;
+  resetOnSuccess?: boolean;
   validate?: (formData: FormData) => ClientValidationResult;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -60,17 +35,20 @@ export default function ActionFeedbackForm({
       return { status: "error", ...validationResult };
     }
     try {
-      await action(formData);
-      return { status: "success", message: successMessage };
-    } catch (error) {
-      const fieldErrors = validationErrors(error);
-      return {
-        status: "error",
-        message: fieldErrors ? "Check the highlighted fields and try again." : error instanceof Error ? error.message : "Unable to complete this action.",
-        fieldErrors,
-      };
+      const result = await action(formData);
+      if (result.status === "success") {
+        if (resetOnSuccess) formRef.current?.reset();
+        return { status: "success", message: result.message ?? successMessage };
+      }
+      return result;
+    } catch {
+      return { status: "error", message: unreachableMessage };
     }
   }, { status: "idle" });
+
+  const fieldErrors = state.status === "error" ? state.fieldErrors : undefined;
+  const message = state.status === "idle" ? undefined : state.message;
+  const firstFieldError = fieldErrors ? Object.values(fieldErrors)[0] : undefined;
 
   useEffect(() => {
     const form = formRef.current;
@@ -82,7 +60,7 @@ export default function ActionFeedbackForm({
       else field.removeAttribute("aria-describedby");
       field.removeAttribute("data-action-feedback-error");
     });
-    const firstInvalidField = Object.entries(state.fieldErrors ?? {}).map(([fieldName]) => {
+    const firstInvalidField = Object.keys(fieldErrors ?? {}).map((fieldName) => {
       const field = form.querySelector<HTMLElement>(`[name="${fieldName}"]`);
       if (!field) return null;
       const fieldErrorId = `${errorId}-${fieldName}`;
@@ -92,13 +70,22 @@ export default function ActionFeedbackForm({
       return field;
     }).find(Boolean);
     firstInvalidField?.focus();
-  }, [errorId, state.fieldErrors]);
+  }, [errorId, fieldErrors]);
 
   return (
     <form action={formAction} className={className} noValidate ref={formRef}>
       {children}
-      {pending && <p className={`text-xs text-[#5a5a5a] ${feedbackClassName ?? ""}`} aria-live="polite">Saving...</p>}
-      {!pending && state.message && <div className={`${state.status === "error" ? "basis-full text-xs font-bold text-[#b42318]" : "basis-full text-xs font-bold text-[#ea3435]"} ${feedbackClassName ?? ""}`} role={state.status === "error" ? "alert" : "status"}>{state.message !== Object.values(state.fieldErrors ?? {})[0] && <p>{state.message}</p>}{state.fieldErrors && <ul className={state.message === Object.values(state.fieldErrors)[0] ? "grid gap-1" : "mt-2 grid gap-1"}>{Object.entries(state.fieldErrors).map(([fieldName, message]) => <li id={`${errorId}-${fieldName}`} key={fieldName}>{message}</li>)}</ul>}</div>}
+      {pending && <p className={`text-xs text-muted ${feedbackClassName ?? ""}`} aria-live="polite">Saving...</p>}
+      {!pending && message && (
+        <div className={`basis-full text-xs font-bold ${state.status === "error" ? "text-danger" : "text-brand"} ${feedbackClassName ?? ""}`} role={state.status === "error" ? "alert" : "status"}>
+          {message !== firstFieldError && <p>{message}</p>}
+          {fieldErrors && (
+            <ul className={message === firstFieldError ? "grid gap-1" : "mt-2 grid gap-1"}>
+              {Object.entries(fieldErrors).map(([fieldName, fieldMessage]) => <li id={`${errorId}-${fieldName}`} key={fieldName}>{fieldMessage}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
     </form>
   );
 }

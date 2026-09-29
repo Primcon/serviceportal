@@ -60,8 +60,6 @@ export async function storePrivateBuffer(input: {
   return true;
 }
 
-export const storePrivatePhoto = storePrivateFile;
-
 export function isMissingPrivateFileError(error: unknown) {
   return typeof error === "object" && error !== null && "statusCode" in error && error.statusCode === 404;
 }

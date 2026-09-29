@@ -1,4 +1,6 @@
 import ExcelJS from "exceljs";
+import { DateTime } from "luxon";
+import { z } from "zod";
 import { CustomerFacingStatus, Prisma, ReportType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
@@ -8,6 +10,32 @@ export type ReportFilters = {
   to?: Date;
   statuses?: CustomerFacingStatus[];
 };
+
+const storedDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const storedFiltersSchema = z.object({
+  companyId: z.string().optional(),
+  from: storedDate.optional(),
+  to: storedDate.optional(),
+  statuses: z.array(z.nativeEnum(CustomerFacingStatus)).optional(),
+});
+
+/**
+ * Converts a schedule's saved filters into query filters. Dates are saved as calendar days
+ * ("2026-09-01") and cover the whole day in the schedule's time zone. Unrecognized values
+ * are dropped rather than failing the delivery.
+ */
+export function parseStoredReportFilters(filters: unknown, timeZone: string): ReportFilters {
+  const parsed = storedFiltersSchema.safeParse(filters ?? {});
+  if (!parsed.success) return {};
+  const { companyId, from, to, statuses } = parsed.data;
+  const day = (value: string) => DateTime.fromISO(value, { zone: timeZone });
+  return {
+    ...(companyId ? { companyId } : {}),
+    ...(from && day(from).isValid ? { from: day(from).startOf("day").toUTC().toJSDate() } : {}),
+    ...(to && day(to).isValid ? { to: day(to).endOf("day").toUTC().toJSDate() } : {}),
+    ...(statuses?.length ? { statuses } : {}),
+  };
+}
 
 type GeneratedReport = {
   buffer: Buffer;

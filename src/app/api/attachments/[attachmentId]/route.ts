@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { RecordVisibility } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRequestActor } from "@/services/request-actor";
+import { privateFileResponse } from "@/services/file-response";
 import { readPrivateFile } from "@/services/private-storage";
 import { customerWorkOrderAccessWhere } from "@/services/authorization-policy";
 
@@ -54,11 +55,5 @@ export async function GET(
   const usingDerivative = Boolean(file);
   const isDerivative = usingDerivative && (variant === "thumbnail" || variant === "optimized");
   const contentType = isDerivative ? "image/webp" : attachment.mimeType;
-  return new NextResponse(new Blob([resolvedFile.buffer as ArrayBuffer], { type: contentType }), {
-    headers: {
-      "Cache-Control": "private, no-store",
-      "Content-Disposition": `${attachment.mimeType.startsWith("image/") ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
-      "Content-Type": contentType,
-    },
-  });
+  return privateFileResponse(resolvedFile, contentType, attachment.fileName);
 }

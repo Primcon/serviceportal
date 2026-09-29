@@ -1,8 +1,26 @@
 import { EmailClient } from "@azure/communication-email";
-import { AccessScope, NotificationStatus, Prisma, PrismaClient } from "@prisma/client";
+import { AccessScope, CustomerFacingStatus, NotificationStatus, Prisma, PrismaClient } from "@prisma/client";
+import { customerStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
 const maximumDeliveryAttempts = 5;
+/** How long a dispatcher owns a notification it claimed. After this, another run may retry it. */
+const claimLeaseMilliseconds = 10 * 60 * 1000;
+/** Emails still unsent after this long are out of date, so they're expired instead of sent. */
+const notificationMaximumAgeMilliseconds = 48 * 60 * 60 * 1000;
+export const expiredNotificationError = "Expired: not sent because it was still queued 48 hours after it was created.";
+
+/**
+ * Marks pending emails that are too old to be useful as failed, so a backlog (after an outage,
+ * or before the dispatcher first ran) doesn't reach customers as a burst of stale messages.
+ */
+export async function expireStaleNotifications(now = new Date()) {
+  const expired = await prisma.notification.updateMany({
+    where: { status: NotificationStatus.PENDING, createdAt: { lt: new Date(now.getTime() - notificationMaximumAgeMilliseconds) } },
+    data: { status: NotificationStatus.FAILED, lastError: expiredNotificationError },
+  });
+  return expired.count;
+}
 
 export function emailConfiguration() {
   const connectionString = process.env.AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING;
@@ -11,7 +29,7 @@ export function emailConfiguration() {
   return { client: new EmailClient(connectionString), senderAddress };
 }
 
-function portalLink(workOrderId: string) {
+export function customerWorkOrderLink(workOrderId: string) {
   const origin = process.env.APP_ORIGIN || "http://localhost:3000";
   return `${origin.replace(/\/$/, "")}/portal/work-orders/${workOrderId}`;
 }
@@ -45,7 +63,7 @@ export async function logCustomerNotification(
     }
     input.eventKey ??= `service-update:${input.serviceUpdateId}`;
     input.subject ??= `Service update: ${serviceUpdate.title}`;
-    input.body ??= `${serviceUpdate.body}\n\nView repair ${workOrder.workOrderNumber}: ${portalLink(input.workOrderId)}`;
+    input.body ??= `${serviceUpdate.body}\n\nView repair ${workOrder.workOrderNumber}: ${customerWorkOrderLink(input.workOrderId)}`;
   }
   if (!input.eventKey || !input.subject || !input.body) throw new Error("Notification content is required.");
 
@@ -95,9 +113,31 @@ export async function logCustomerNotification(
   return result.count;
 }
 
+/** Email content for a change in the status customers see. Internal stages and conditions stay out of it. */
+export function statusChangeNotification(input: { workOrderId: string; workOrderNumber: string; status: CustomerFacingStatus }) {
+  const label = customerStatusLabels[input.status];
+  return {
+    subject: `Repair ${input.workOrderNumber}: ${label}`,
+    body: `The status of your repair ${input.workOrderNumber} is now ${label}.\n\nView the repair: ${customerWorkOrderLink(input.workOrderId)}`,
+  };
+}
+
+/**
+ * Takes ownership of a pending notification before sending it, by moving its next attempt
+ * forward. Only one dispatcher can win the claim, so overlapping runs never send twice.
+ */
+export async function claimNotification(notification: { id: string; nextAttemptAt: Date }) {
+  const claimed = await prisma.notification.updateMany({
+    where: { id: notification.id, status: NotificationStatus.PENDING, nextAttemptAt: notification.nextAttemptAt },
+    data: { nextAttemptAt: new Date(Date.now() + claimLeaseMilliseconds) },
+  });
+  return claimed.count === 1;
+}
+
 export async function dispatchPendingNotifications(limit = 25) {
   const configuration = emailConfiguration();
-  if (!configuration) return { processed: 0, delivered: 0, failed: 0 };
+  if (!configuration) return { processed: 0, delivered: 0, failed: 0, expired: 0 };
+  const expired = await expireStaleNotifications();
   const notifications = await prisma.notification.findMany({
     where: {
       status: NotificationStatus.PENDING,
@@ -110,6 +150,7 @@ export async function dispatchPendingNotifications(limit = 25) {
   let delivered = 0;
   let failed = 0;
   for (const notification of notifications) {
+    if (!(await claimNotification(notification))) continue;
     try {
       const poller = await configuration.client.beginSend({
         senderAddress: configuration.senderAddress,
@@ -137,5 +178,5 @@ export async function dispatchPendingNotifications(limit = 25) {
       failed += 1;
     }
   }
-  return { processed: notifications.length, delivered, failed };
+  return { processed: notifications.length, delivered, failed, expired };
 }

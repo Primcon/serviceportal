@@ -1,4 +1,5 @@
 import { Prisma, UserRole } from "@prisma/client";
+import { AccessDeniedError } from "@/lib/errors";
 
 const internalRoles = new Set<UserRole>([
   UserRole.PORTAL_ADMINISTRATOR,
@@ -16,7 +17,7 @@ export function isAllowedInternalRole(role: UserRole, allowedRoles: UserRole[]) 
 
 export function assertActiveUser<T extends { isActive: boolean }>(user: T | null): asserts user is T & { isActive: true } {
   if (!user?.isActive) {
-    throw new Error("Your account is inactive.");
+    throw new AccessDeniedError("Your account is inactive.");
   }
 }
 

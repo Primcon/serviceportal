@@ -4,8 +4,9 @@ import { PrismaClient, UserRole } from "@prisma/client";
 import { getActiveInternalUserForRoles } from "./authorization";
 import { grantUserAccess, updateDocumentVisibility, updateInternalUserRole, updateServiceStage } from "@/features/admin/actions";
 import { approveAccessRequest } from "@/features/access/actions";
-import { createCompany, createCustomerVisiblePhoto, createEquipment, createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
-import { storePrivateFile, storePrivatePhoto } from "@/services/private-storage";
+import { createCompany, createCustomerVisiblePhotos, createEquipment, createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
+import sharp from "sharp";
+import { storePrivateBuffer, storePrivateFile } from "@/services/private-storage";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/services/private-storage", () => ({
@@ -13,7 +14,6 @@ vi.mock("@/services/private-storage", () => ({
   readPrivateFile: vi.fn(),
   storePrivateBuffer: vi.fn(),
   storePrivateFile: vi.fn(),
-  storePrivatePhoto: vi.fn(),
 }));
 
 const prisma = new PrismaClient();
@@ -53,7 +53,7 @@ describe("database-backed internal authorization", () => {
 
   it("rejects service users from manager-only operations", async () => {
     process.env.DEVELOPMENT_INTERNAL_ROLE = UserRole.VACTECH_SERVICE_USER;
-    await expect(getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER])).rejects.toThrow("Internal access is required.");
+    await expect(getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER])).rejects.toThrow("You don't have permission to do that.");
   });
 
   it("honors a disabled persisted internal user", async () => {
@@ -72,12 +72,12 @@ describe("database-backed internal authorization", () => {
     const request = new FormData();
     request.set("requestId", crypto.randomUUID());
     request.set("companyId", crypto.randomUUID());
-    await expect(approveAccessRequest(request)).rejects.toThrow("Internal access is required.");
+    await expect(approveAccessRequest(request)).resolves.toMatchObject({ status: "error", message: "You don't have permission to do that." });
 
     const document = new FormData();
     document.set("attachmentId", crypto.randomUUID());
     document.set("visibility", "CUSTOMER_VISIBLE");
-    await expect(updateDocumentVisibility(document)).rejects.toThrow("Internal access is required.");
+    await expect(updateDocumentVisibility(document)).resolves.toMatchObject({ status: "error", message: "You don't have permission to do that." });
   });
 
   it("creates companies without implicitly granting the current customer access", async () => {
@@ -118,7 +118,7 @@ describe("database-backed internal authorization", () => {
     formData.set("internalRole", UserRole.PORTAL_ADMINISTRATOR);
 
     try {
-      await expect(updateInternalUserRole(formData)).rejects.toThrow("Internal access is required.");
+      await expect(updateInternalUserRole(formData)).resolves.toMatchObject({ status: "error", message: "You don't have permission to do that." });
       expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).internalRole).toBe(UserRole.VACTECH_SERVICE_USER);
     } finally {
       await prisma.user.delete({ where: { id: user.id } });
@@ -163,7 +163,7 @@ describe("database-backed internal authorization", () => {
     formData.set("serialNumber", "MISSING-COMPANY");
     formData.set("description", "");
 
-    await expect(createEquipment(formData)).rejects.toThrow("Company not found.");
+    await expect(createEquipment(formData)).resolves.toMatchObject({ status: "error", message: "Company not found." });
   });
 
   it("prevents duplicate serial numbers within a company but allows them across companies", async () => {
@@ -186,8 +186,8 @@ describe("database-backed internal authorization", () => {
 
     try {
       await createEquipment(formData(company.id, serialNumber));
-      await expect(createEquipment(formData(company.id, serialNumber.toLowerCase()))).rejects.toThrow("Equipment with this serial number already exists for the selected company.");
-      await expect(createEquipment(formData(otherCompany.id, serialNumber))).resolves.toBeUndefined();
+      await expect(createEquipment(formData(company.id, serialNumber.toLowerCase()))).resolves.toMatchObject({ status: "error", message: "Equipment with this serial number already exists for the selected company." });
+      await expect(createEquipment(formData(otherCompany.id, serialNumber))).resolves.toEqual({ status: "success" });
       expect(await prisma.equipment.count({ where: { serialNumber } })).toBe(2);
     } finally {
       await prisma.equipment.deleteMany({ where: { companyId: { in: [company.id, otherCompany.id] } } });
@@ -269,7 +269,7 @@ describe("database-backed internal authorization", () => {
       await expect(prisma.auditEvent.count({ where: { workOrderId: workOrder.id, eventType: "work-order.status-changed" } })).resolves.toBe(auditCount);
 
       formData.set("serviceStageId", inactiveStage.id);
-      await expect(updateWorkOrderStatus(formData)).rejects.toThrow("Service stage is inactive.");
+      await expect(updateWorkOrderStatus(formData)).resolves.toMatchObject({ status: "error", message: "Service stage is inactive." });
     } finally {
       await prisma.workOrder.delete({ where: { id: workOrder.id } });
       await prisma.equipment.delete({ where: { id: equipment.id } });
@@ -298,7 +298,7 @@ describe("database-backed internal authorization", () => {
       },
     });
     vi.mocked(storePrivateFile).mockResolvedValue(false);
-    vi.mocked(storePrivatePhoto).mockResolvedValue(false);
+    vi.mocked(storePrivateBuffer).mockResolvedValue(false);
 
     const documentFormData = new FormData();
     documentFormData.set("workOrderId", workOrder.id);
@@ -308,15 +308,17 @@ describe("database-backed internal authorization", () => {
     const photoFormData = new FormData();
     photoFormData.set("workOrderId", workOrder.id);
     photoFormData.set("photoCategory", "INSPECTION");
-    photoFormData.set("file", new File(["test photo"], "test.jpg", { type: "image/jpeg" }));
+    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#ffffff" } }).png().toBuffer();
+    photoFormData.set("files", new File([new Uint8Array(png)], "test.png", { type: "image/png" }));
 
     try {
-      await expect(createInternalDocument(documentFormData)).rejects.toThrow("Private file storage is not configured.");
-      await expect(createCustomerVisiblePhoto(photoFormData)).rejects.toThrow("Private file storage is not configured.");
+      const storageUnavailable = { status: "error", message: "Private file storage is not configured." };
+      await expect(createInternalDocument(documentFormData)).resolves.toMatchObject(storageUnavailable);
+      await expect(createCustomerVisiblePhotos(photoFormData)).resolves.toMatchObject(storageUnavailable);
       expect(await prisma.attachment.count({ where: { workOrderId: workOrder.id } })).toBe(0);
     } finally {
       vi.mocked(storePrivateFile).mockReset();
-      vi.mocked(storePrivatePhoto).mockReset();
+      vi.mocked(storePrivateBuffer).mockReset();
       await prisma.workOrder.delete({ where: { id: workOrder.id } });
       await prisma.equipment.delete({ where: { id: equipment.id } });
       await prisma.company.delete({ where: { id: company.id } });

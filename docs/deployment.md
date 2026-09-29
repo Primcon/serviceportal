@@ -34,6 +34,20 @@ Configure the hosting platform to use these unauthenticated endpoints:
 
 Both endpoints return only a generic status and set `Cache-Control: no-store`.
 
+## Security Headers
+
+Every page gets a Content Security Policy from [`src/proxy.ts`](../src/proxy.ts) with a fresh nonce per request, so only the portal's own scripts run. Pages render per request for this reason. All responses also send `nosniff`, a strict referrer policy, `X-Frame-Options: DENY`, a permissions policy, and HSTS in production ([`next.config.ts`](../next.config.ts)). Private files download unless they're raster images, and are served with a sandboxing policy.
+
+Customer sign-out also ends the Entra External ID session. Register `https://<application-origin>/` as a redirect URI on the customer app registration so Entra returns customers to the portal afterwards. Employee sign-out is local only, so staff aren't signed out of their other Microsoft apps.
+
+## Local Secrets
+
+Local development doesn't need any production secret: the default `AUTH_MODE="development"` uses development identities, and files go to private local storage.
+
+- Never copy production values into a local `.env`. If you need to test Entra, ACS or Blob Storage locally, create separate development app registrations, a development ACS resource and a development storage account, each with their own keys.
+- Keep the project out of OneDrive and other synced folders, which copy `.env` to the cloud.
+- If production secrets were ever stored in a local or synced `.env`, rotate them: Entra client secrets for both app registrations, the ACS access keys, the storage account keys, `AUTH_SESSION_SECRET`, and both worker secrets.
+
 ## Continuous Integration
 
-[`.github/workflows/quality.yml`](../.github/workflows/quality.yml) validates Prisma, applies migrations to disposable PostgreSQL, runs lint and tests, and creates a production build on pull requests and pushes to `main`.
+[`.github/workflows/quality.yml`](../.github/workflows/quality.yml) validates Prisma, applies migrations to disposable PostgreSQL, type-checks, runs lint and tests (including database tests), and creates a production build and container image on pull requests and pushes to `main`.

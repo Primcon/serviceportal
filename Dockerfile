@@ -3,7 +3,8 @@ FROM node:22-bookworm-slim AS dependencies
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# The Prisma schema isn't copied yet, so skip install scripts; the builder stage runs prisma generate.
+RUN npm ci --ignore-scripts
 
 FROM node:22-bookworm-slim AS builder
 

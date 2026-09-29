@@ -27,34 +27,34 @@ export default function WorkspaceNavigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <header className="border-b border-[#d9d9d9] bg-[#ffffff] text-[#000000]">
+    <header className="border-b border-line bg-paper text-ink">
       <div className="relative mx-auto flex max-w-7xl items-center gap-3 px-5 py-3 sm:px-8">
         <Link href="/workspace" className="flex shrink-0 items-center" aria-label="VacTech service workspace">
           <Image alt="Pfeiffer Vacuum, part of the Busch Group" className="h-10 w-auto" height={131} priority src="/pfeiffer-vacuum-logo.png" width={320} />
         </Link>
         <div className="ml-auto flex shrink-0 items-center gap-1 text-sm">
-          <Link className="hidden items-center gap-2 px-3 py-2 font-bold text-[#5a5a5a] hover:text-[#ea3435] sm:flex" href="/portal">
+          <Link className="hidden items-center gap-2 px-3 py-2 font-bold text-muted hover:text-brand sm:flex" href="/portal">
             Customer portal
             <ExternalLink size={15} />
           </Link>
           <form action="/api/auth/logout" method="post">
-            <button className="hidden items-center gap-2 px-3 py-2 font-bold text-[#5a5a5a] hover:text-[#ea3435] sm:flex">
+            <button className="hidden items-center gap-2 px-3 py-2 font-bold text-muted hover:text-brand sm:flex">
               <LogOut size={15} />
               Sign out
             </button>
           </form>
-          <button aria-controls="workspace-menu" aria-expanded={isMenuOpen} className="grid size-10 place-items-center border border-[#d9d9d9] text-[#5a5a5a] hover:border-[#ea3435] hover:text-[#ea3435]" onClick={() => setIsMenuOpen((open) => !open)} title={isMenuOpen ? "Close menu" : "Open menu"} type="button">
+          <button aria-controls="workspace-menu" aria-expanded={isMenuOpen} className="grid size-10 place-items-center border border-line text-muted hover:border-brand hover:text-brand" onClick={() => setIsMenuOpen((open) => !open)} title={isMenuOpen ? "Close menu" : "Open menu"} type="button">
             {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
             <span className="sr-only">{isMenuOpen ? "Close menu" : "Open menu"}</span>
           </button>
         </div>
-        <nav aria-label="Service workspace" className={`${isMenuOpen ? "grid" : "hidden"} absolute right-5 top-full z-20 mt-2 w-72 gap-1 border border-[#d9d9d9] bg-[#ffffff] p-2 shadow-xl sm:right-8`} id="workspace-menu">
+        <nav aria-label="Service workspace" className={`${isMenuOpen ? "grid" : "hidden"} absolute right-5 top-full z-20 mt-2 w-72 gap-1 border border-line bg-paper p-2 shadow-xl sm:right-8`} id="workspace-menu">
           {navigationItems.map(({ href, label, icon: Icon }) => {
             const current = isCurrentPath(pathname, href);
             return (
               <Link
                 aria-current={current ? "page" : undefined}
-                className={`flex items-center gap-2 border-l-2 px-3 py-2.5 text-sm font-bold transition-colors ${current ? "border-[#ea3435] bg-[#fde5e5] text-[#000000]" : "border-transparent text-[#5a5a5a] hover:bg-[#f6f6f6] hover:text-[#ea3435]"}`}
+                className={`flex items-center gap-2 border-l-2 px-3 py-2.5 text-sm font-bold transition-colors ${current ? "border-brand bg-brand-soft text-ink" : "border-transparent text-muted hover:bg-surface hover:text-brand"}`}
                 href={href}
                 key={href}
                 onClick={() => setIsMenuOpen(false)}
@@ -64,9 +64,9 @@ export default function WorkspaceNavigation() {
               </Link>
             );
           })}
-          <Link className="flex items-center gap-2 border-t border-[#d9d9d9] px-3 py-2.5 text-sm font-bold text-[#5a5a5a] hover:bg-[#f6f6f6] hover:text-[#ea3435] sm:hidden" href="/portal" onClick={() => setIsMenuOpen(false)}><ExternalLink size={16} /> Customer portal</Link>
-          <form action="/api/auth/logout" className="sm:hidden">
-            <button className="flex w-full items-center gap-2 border-t border-[#d9d9d9] px-3 py-2.5 text-left text-sm font-bold text-[#5a5a5a] hover:bg-[#f6f6f6] hover:text-[#ea3435]"><LogOut size={16} /> Sign out</button>
+          <Link className="flex items-center gap-2 border-t border-line px-3 py-2.5 text-sm font-bold text-muted hover:bg-surface hover:text-brand sm:hidden" href="/portal" onClick={() => setIsMenuOpen(false)}><ExternalLink size={16} /> Customer portal</Link>
+          <form action="/api/auth/logout" className="sm:hidden" method="post">
+            <button className="flex w-full items-center gap-2 border-t border-line px-3 py-2.5 text-left text-sm font-bold text-muted hover:bg-surface hover:text-brand"><LogOut size={16} /> Sign out</button>
           </form>
         </nav>
       </div>

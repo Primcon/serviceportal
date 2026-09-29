@@ -13,7 +13,7 @@ const sessionLifetimeSeconds = 8 * 60 * 60;
 
 type AuthState = { audience: EntraAudience; state: string; verifier: string };
 export type AuthenticatedActor = { identitySubject: string; email: string; displayName: string; role: UserRole; audience: EntraAudience };
-type OpenIdConfiguration = { issuer: string; jwks_uri: string; token_endpoint: string; userinfo_endpoint?: string };
+type OpenIdConfiguration = { issuer: string; jwks_uri: string; token_endpoint: string; userinfo_endpoint?: string; end_session_endpoint?: string };
 type UserInfo = { sub?: unknown; given_name?: unknown; family_name?: unknown };
 type MicrosoftGraphProfile = { givenName?: unknown; surname?: unknown; displayName?: unknown };
 const customerScopes = "openid profile email https://graph.microsoft.com/User.ReadWrite";
@@ -136,6 +136,16 @@ export async function assertCustomerAccess(userId: string) {
   if (!access) throw new CustomerAccessNotApprovedError();
 }
 
+function parseAuthState(encodedState: string): AuthState | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(encodedState, "base64url").toString()) as Partial<AuthState>;
+    if (typeof parsed.audience !== "string" || typeof parsed.state !== "string" || typeof parsed.verifier !== "string") return null;
+    return parsed as AuthState;
+  } catch {
+    return null;
+  }
+}
+
 export async function createEntraAuthorization(audience: EntraAudience, prompt?: "select_account") {
   const application = getEntraApplication(audience);
   const state = encode(randomBytes(24).toString("hex"));
@@ -160,9 +170,9 @@ export async function exchangeEntraCode(audience: EntraAudience, code: string, s
   const cookieStore = await cookies();
   const encodedState = cookieStore.get(`${stateCookiePrefix}${audience}`)?.value;
   if (!encodedState) throw new Error("Authentication state expired.");
-  const authState = JSON.parse(Buffer.from(encodedState, "base64url").toString()) as AuthState;
   cookieStore.delete(`${stateCookiePrefix}${audience}`);
-  if (authState.audience !== audience || authState.state !== state) throw new Error("Invalid authentication state.");
+  const authState = parseAuthState(encodedState);
+  if (!authState || authState.audience !== audience || authState.state !== state) throw new Error("Invalid authentication state.");
 
   const openIdConfiguration = await getOpenIdConfiguration(application.authority);
   const tokenResponse = await fetch(openIdConfiguration.token_endpoint, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: application.clientId, client_secret: application.clientSecret, grant_type: "authorization_code", code, redirect_uri: application.redirectUri, code_verifier: authState.verifier, scope: audience === "customer" ? customerScopes : employeeScopes }) });
@@ -176,7 +186,7 @@ export async function exchangeEntraCode(audience: EntraAudience, code: string, s
   const email = typeof payload.email === "string" ? payload.email : typeof payload.preferred_username === "string" ? payload.preferred_username : "";
   if (!externalSubject || !email) throw new Error("Entra token did not include required identity claims.");
 
-  const claimedRole = audience === "customer" ? UserRole.CUSTOMER_USER : employeeRole(payload.roles);
+  const claimedRole = audience === "customer" ? UserRole.CUSTOMER_USER : startingEmployeeRole(payload.roles);
   const customerUserInfo = audience === "customer"
     ? await getCustomerUserInfo(openIdConfiguration.userinfo_endpoint, token.access_token, externalSubject)
     : null;
@@ -196,23 +206,29 @@ export async function exchangeEntraCode(audience: EntraAudience, code: string, s
           firstName,
           lastName,
         }
-      : { displayName: typeof payload.name === "string" ? payload.name : email, internalRole: claimedRole }),
+      : { displayName: typeof payload.name === "string" ? payload.name : email, internalRole: claimedRole ?? undefined }),
   });
   if (!user.isActive) throw new Error("Your account is inactive.");
   if (audience === "customer") await assertCustomerAccess(user.id);
+  // Employee roles are managed in the portal. The Entra app role only seeds the first one.
   const role = audience === "employee" ? user.internalRole : claimedRole;
-  if (!role) throw new Error("Employee account has no assigned portal role.");
+  if (!role) throw new Error("Employee account has no portal role. Assign an app role in Entra for the first sign-in.");
   const session = await new SignJWT({ sub: user.identitySubject, email, displayName: user.displayName, role, audience }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(`${sessionLifetimeSeconds}s`).sign(sessionSecret());
   cookieStore.set(sessionCookie, session, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: sessionLifetimeSeconds, path: "/" });
   return { user, role };
 }
 
-function employeeRole(value: unknown) {
+/**
+ * The portal role a new employee starts with, taken from their Entra app roles. After the
+ * first sign-in the portal's own role wins, so later Entra role changes don't apply; who
+ * may sign in at all is controlled by the enterprise app's "Assignment required" setting.
+ */
+export function startingEmployeeRole(value: unknown): UserRole | null {
   const roles = Array.isArray(value) ? value.filter((role): role is string => typeof role === "string") : [];
   if (roles.includes("Portal.Administrator")) return UserRole.PORTAL_ADMINISTRATOR;
   if (roles.includes("VacTech.Manager")) return UserRole.VACTECH_MANAGER;
   if (roles.includes("VacTech.ServiceUser")) return UserRole.VACTECH_SERVICE_USER;
-  throw new Error("Employee account has no recognized application role.");
+  return null;
 }
 
 export async function getSessionActor() {
@@ -224,6 +240,33 @@ export async function getSessionActor() {
     if (payload.audience !== "customer" && payload.audience !== "employee") return null;
     return { identitySubject: payload.sub, email: payload.email, displayName: payload.displayName, role: payload.role as UserRole, audience: payload.audience } satisfies AuthenticatedActor;
   } catch {
+    return null;
+  }
+}
+
+/**
+ * Clears the portal session and any pending sign-in state. For customer sessions it also
+ * returns the Entra External ID sign-out URL, so the next sign-in asks for credentials
+ * again. Employee sign-out stays local on purpose: ending the Microsoft Entra session
+ * would also sign the employee out of Outlook, Teams and every other Microsoft app.
+ */
+export async function endSession(postLogoutRedirectUri: string): Promise<string | null> {
+  const actor = await getSessionActor();
+  const cookieStore = await cookies();
+  cookieStore.delete(sessionCookie);
+  cookieStore.delete(`${stateCookiePrefix}customer`);
+  cookieStore.delete(`${stateCookiePrefix}employee`);
+  if (actor?.audience !== "customer") return null;
+  try {
+    const application = getEntraApplication("customer");
+    const { end_session_endpoint: endSessionEndpoint } = await getOpenIdConfiguration(application.authority);
+    if (!endSessionEndpoint) return null;
+    const signOut = new URL(endSessionEndpoint);
+    signOut.searchParams.set("client_id", application.clientId);
+    signOut.searchParams.set("post_logout_redirect_uri", postLogoutRedirectUri);
+    return signOut.toString();
+  } catch (error) {
+    console.warn("Customer Entra sign-out URL could not be built; signing out locally only.", error instanceof Error ? error.message : error);
     return null;
   }
 }
