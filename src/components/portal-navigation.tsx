@@ -52,7 +52,7 @@ export default function PortalNavigation() {
               </Link>
             );
           })}
-          <form action="/api/auth/logout" className="border-t border-[#d9d9d9] sm:hidden">
+          <form action="/api/auth/logout" className="border-t border-[#d9d9d9] sm:hidden" method="post">
             <button className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-bold text-[#5a5a5a] hover:bg-[#f6f6f6] hover:text-[#ea3435]"><LogOut size={16} /> Sign out</button>
           </form>
         </nav>

@@ -1,11 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { CustomerAccessNotApprovedError, exchangeEntraCode } = vi.hoisted(() => ({
+const { CustomerAccessNotApprovedError, endSession, exchangeEntraCode } = vi.hoisted(() => ({
   CustomerAccessNotApprovedError: class CustomerAccessNotApprovedError extends Error {},
+  endSession: vi.fn(),
   exchangeEntraCode: vi.fn(),
 }));
 
-vi.mock("@/services/entra-auth", () => ({ CustomerAccessNotApprovedError, exchangeEntraCode }));
+vi.mock("@/services/entra-auth", () => ({ CustomerAccessNotApprovedError, endSession, exchangeEntraCode }));
 
 import { GET as callback } from "./[audience]/callback/route";
 import { POST as logout } from "./logout/route";
@@ -17,6 +18,8 @@ beforeEach(() => {
   process.env.APP_ORIGIN = publicOrigin;
   exchangeEntraCode.mockReset();
   exchangeEntraCode.mockResolvedValue({});
+  endSession.mockReset();
+  endSession.mockResolvedValue(null);
 });
 
 afterAll(() => {
@@ -49,7 +52,16 @@ describe("public authentication redirects", () => {
 
   it("redirects logout to the public application origin", async () => {
     const response = await logout();
+    expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(`${publicOrigin}/`);
+    expect(endSession).toHaveBeenCalledWith(`${publicOrigin}/`);
+  });
+
+  it("sends customers through Entra sign-out when it is available", async () => {
+    const entraSignOut = "https://tenant.ciamlogin.com/oauth2/v2.0/logout?client_id=test";
+    endSession.mockResolvedValue(entraSignOut);
+    const response = await logout();
+    expect(response.headers.get("location")).toBe(entraSignOut);
   });
 
   it("requires an explicit public application origin", async () => {

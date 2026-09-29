@@ -65,7 +65,7 @@ export default function WorkspaceNavigation() {
             );
           })}
           <Link className="flex items-center gap-2 border-t border-[#d9d9d9] px-3 py-2.5 text-sm font-bold text-[#5a5a5a] hover:bg-[#f6f6f6] hover:text-[#ea3435] sm:hidden" href="/portal" onClick={() => setIsMenuOpen(false)}><ExternalLink size={16} /> Customer portal</Link>
-          <form action="/api/auth/logout" className="sm:hidden">
+          <form action="/api/auth/logout" className="sm:hidden" method="post">
             <button className="flex w-full items-center gap-2 border-t border-[#d9d9d9] px-3 py-2.5 text-left text-sm font-bold text-[#5a5a5a] hover:bg-[#f6f6f6] hover:text-[#ea3435]"><LogOut size={16} /> Sign out</button>
           </form>
         </nav>
