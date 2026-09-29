@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/lib/action-result";
-import { UserFacingError } from "@/lib/errors";
+import { AccessDeniedError, UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
@@ -30,6 +30,13 @@ async function assertNotLastActiveAdministrator(transaction: Prisma.TransactionC
   }
 }
 
+/** Managers administer staff and customers, but only a portal administrator can change another administrator. */
+function assertMayManage(reviewerRole: UserRole, targetRole: UserRole | null) {
+  if (targetRole === UserRole.PORTAL_ADMINISTRATOR && reviewerRole !== UserRole.PORTAL_ADMINISTRATOR) {
+    throw new AccessDeniedError("Only a portal administrator can change another administrator's access.");
+  }
+}
+
 export async function updateUserActiveStatus(formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
     const input = z.object({ userId: requiredText, isActive: z.enum(["true", "false"]) }).parse({
@@ -48,6 +55,7 @@ export async function updateUserActiveStatus(formData: FormData): Promise<Action
         select: { id: true, isActive: true, internalRole: true },
       });
       if (!user) throw new UserFacingError("User not found.");
+      assertMayManage(reviewer.internalRole, user.internalRole);
       if (!isActive && user.isActive && user.internalRole === UserRole.PORTAL_ADMINISTRATOR) {
         await assertNotLastActiveAdministrator(transaction, user.id);
       }
@@ -82,6 +90,7 @@ export async function updateInternalUserRole(formData: FormData): Promise<Action
         select: { id: true, isActive: true, internalRole: true },
       });
       if (!user?.internalRole) throw new UserFacingError("Internal user not found.");
+      assertMayManage(reviewer.internalRole, user.internalRole);
       if (user.internalRole === input.internalRole) return;
       if (user.isActive && user.internalRole === UserRole.PORTAL_ADMINISTRATOR) {
         await assertNotLastActiveAdministrator(transaction, user.id);
@@ -194,12 +203,21 @@ export async function updateServiceStage(formData: FormData): Promise<ActionResu
         where: { id: stage.id },
         data: { customerFacingStatus: input.customerFacingStatus, isActive },
       });
+      // Work orders store their customer status for fast filtering, so keep jobs already
+      // in this stage in step with the new mapping. This is a configuration change, so
+      // customers aren't emailed about it.
+      const resynchronized = stage.customerFacingStatus === input.customerFacingStatus
+        ? { count: 0 }
+        : await transaction.workOrder.updateMany({
+          where: { serviceStageId: stage.id },
+          data: { customerFacingStatus: input.customerFacingStatus },
+        });
       await recordAudit(transaction, {
         actorUserId: reviewer.id,
         eventType: "service-stage.updated",
         entityType: "ServiceStage",
         entityId: stage.id,
-        metadata: { previousCustomerFacingStatus: stage.customerFacingStatus, customerFacingStatus: input.customerFacingStatus, previousIsActive: stage.isActive, isActive },
+        metadata: { previousCustomerFacingStatus: stage.customerFacingStatus, customerFacingStatus: input.customerFacingStatus, previousIsActive: stage.isActive, isActive, workOrdersUpdated: resynchronized.count },
       });
     });
     revalidatePath("/workspace/workflow");
