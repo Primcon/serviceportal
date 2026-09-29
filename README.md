@@ -13,21 +13,22 @@ The current milestone delivers the core service workflow: Company -> Location ->
 
 ## Local Setup
 
-Prerequisites: Node.js 20.9 or later, npm, Docker Desktop, and Azure CLI when using Azure Blob Storage locally.
+Prerequisites: Node.js 22, npm, Docker Desktop, and Azure CLI when using Azure Blob Storage locally. Keep the project outside OneDrive or other synced folders (for example `C:\dev\serviceportal`); syncing `node_modules` and build output is slow and can corrupt files.
 
-```bash
+```powershell
 npm install
 Copy-Item .env.example .env
 docker compose up -d database
-npx prisma validate
+npx prisma migrate deploy
+npm run db:seed
 npm run dev
 ```
 
-The application is available at `http://localhost:3000`.
+The application is available at `http://localhost:3000`. `npm install` also generates the Prisma client. The seed adds fictional customers, equipment, work orders at different stages, and a user for every role. It only runs against a local database and is safe to re-run. To start over, `npx prisma migrate reset` recreates the database and seeds it.
 
-For local authorization testing, set `DEVELOPMENT_INTERNAL_ROLE` in `.env` to `VACTECH_MANAGER`, `VACTECH_SERVICE_USER`, or `PORTAL_ADMINISTRATOR`. The default is `VACTECH_MANAGER`; service users can document work but cannot use administration actions.
+Local development uses development identities by default (`AUTH_MODE="development"`): the workspace signs you in as the seeded manager, and the customer portal as the seeded customer. Set `DEVELOPMENT_INTERNAL_ROLE` in `.env` to `VACTECH_MANAGER`, `VACTECH_SERVICE_USER`, or `PORTAL_ADMINISTRATOR` to test other roles; service users can document work but cannot use administration actions.
 
-Set `AUTH_MODE="entra"` to require verified Entra sessions locally. In the default `development` mode, the portal uses development identities when no matching Entra session is present.
+Set `AUTH_MODE="entra"` only to test real Entra sign-in locally, and use separate development app registrations and secrets for it, never production ones (see [Local secrets](docs/deployment.md#local-secrets)).
 
 ### Production identity plan
 
@@ -59,10 +60,15 @@ Production customer notifications use Azure Communication Services Email. Config
 
 ```bash
 npm run lint
+npx next typegen
+npx tsc --noEmit
+npm run test:run
 npm run build
 npx prisma validate
 docker compose config
 ```
+
+`npm run test:run` includes database tests, so start the database service first.
 
 The repository includes Prisma migrations for the core data model and access-grant integrity. Apply them locally with `npx prisma migrate deploy` after starting the database service.
 
@@ -76,3 +82,5 @@ The repository includes Prisma migrations for the core data model and access-gra
 - [MVP roadmap](docs/mvp-roadmap.md)
 - [Customer notification delivery](docs/notifications.md)
 - [Deployment readiness](docs/deployment.md)
+- [UI foundation](docs/ui.md)
+- [WordPress discovery](docs/migration/wordpress-discovery.md)
