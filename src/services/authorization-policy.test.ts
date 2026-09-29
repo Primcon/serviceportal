@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { UserRole } from "@prisma/client";
 import { assertActiveUser, isAllowedInternalRole, isInternalRole } from "./authorization-policy";
 import { resolveDevelopmentInternalRole } from "./development-identity";
@@ -38,6 +38,20 @@ describe("authorization policy", () => {
     const employee = parseEntraApplication({ tenantId: "employee-tenant", clientId: "employee-client", clientSecret: "employee-secret", authority: "https://login.microsoftonline.com/employee", redirectUri: "https://portal.example.com/auth/employee/callback" });
     expect(customer.clientId).not.toBe(employee.clientId);
     expect(() => parseEntraApplication({ tenantId: "", clientId: "", clientSecret: "", authority: "invalid", redirectUri: "invalid" })).toThrow();
-    expect(getEntraApplication("customer").clientId).toBeTruthy();
+  });
+
+  it("reads each Entra application from its own environment variables", () => {
+    vi.stubEnv("ENTRA_CUSTOMER_TENANT_ID", "customer-tenant");
+    vi.stubEnv("ENTRA_CUSTOMER_CLIENT_ID", "customer-client");
+    vi.stubEnv("ENTRA_CUSTOMER_CLIENT_SECRET", "customer-secret");
+    vi.stubEnv("ENTRA_CUSTOMER_AUTHORITY", "https://example.ciamlogin.com/");
+    vi.stubEnv("ENTRA_CUSTOMER_REDIRECT_URI", "https://portal.example.com/api/auth/customer/callback");
+    try {
+      expect(getEntraApplication("customer")).toMatchObject({ clientId: "customer-client", authority: "https://example.ciamlogin.com/" });
+      vi.stubEnv("ENTRA_EMPLOYEE_CLIENT_ID", "");
+      expect(() => getEntraApplication("employee")).toThrow();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
