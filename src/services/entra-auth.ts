@@ -186,7 +186,7 @@ export async function exchangeEntraCode(audience: EntraAudience, code: string, s
   const email = typeof payload.email === "string" ? payload.email : typeof payload.preferred_username === "string" ? payload.preferred_username : "";
   if (!externalSubject || !email) throw new Error("Entra token did not include required identity claims.");
 
-  const claimedRole = audience === "customer" ? UserRole.CUSTOMER_USER : employeeRole(payload.roles);
+  const claimedRole = audience === "customer" ? UserRole.CUSTOMER_USER : startingEmployeeRole(payload.roles);
   const customerUserInfo = audience === "customer"
     ? await getCustomerUserInfo(openIdConfiguration.userinfo_endpoint, token.access_token, externalSubject)
     : null;
@@ -206,23 +206,29 @@ export async function exchangeEntraCode(audience: EntraAudience, code: string, s
           firstName,
           lastName,
         }
-      : { displayName: typeof payload.name === "string" ? payload.name : email, internalRole: claimedRole }),
+      : { displayName: typeof payload.name === "string" ? payload.name : email, internalRole: claimedRole ?? undefined }),
   });
   if (!user.isActive) throw new Error("Your account is inactive.");
   if (audience === "customer") await assertCustomerAccess(user.id);
+  // Employee roles are managed in the portal. The Entra app role only seeds the first one.
   const role = audience === "employee" ? user.internalRole : claimedRole;
-  if (!role) throw new Error("Employee account has no assigned portal role.");
+  if (!role) throw new Error("Employee account has no portal role. Assign an app role in Entra for the first sign-in.");
   const session = await new SignJWT({ sub: user.identitySubject, email, displayName: user.displayName, role, audience }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(`${sessionLifetimeSeconds}s`).sign(sessionSecret());
   cookieStore.set(sessionCookie, session, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: sessionLifetimeSeconds, path: "/" });
   return { user, role };
 }
 
-function employeeRole(value: unknown) {
+/**
+ * The portal role a new employee starts with, taken from their Entra app roles. After the
+ * first sign-in the portal's own role wins, so later Entra role changes don't apply; who
+ * may sign in at all is controlled by the enterprise app's "Assignment required" setting.
+ */
+export function startingEmployeeRole(value: unknown): UserRole | null {
   const roles = Array.isArray(value) ? value.filter((role): role is string => typeof role === "string") : [];
   if (roles.includes("Portal.Administrator")) return UserRole.PORTAL_ADMINISTRATOR;
   if (roles.includes("VacTech.Manager")) return UserRole.VACTECH_MANAGER;
   if (roles.includes("VacTech.ServiceUser")) return UserRole.VACTECH_SERVICE_USER;
-  throw new Error("Employee account has no recognized application role.");
+  return null;
 }
 
 export async function getSessionActor() {

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient, UserRole } from "@prisma/client";
-import { assertCustomerAccess, upsertEntraUser } from "./entra-auth";
+import { assertCustomerAccess, startingEmployeeRole, upsertEntraUser } from "./entra-auth";
 import { assertPersistedInternalRole } from "./authorization";
 
 const prisma = new PrismaClient();
@@ -56,6 +56,13 @@ describe("Entra account linking", () => {
     await prisma.user.update({ where: { id: employee.id }, data: { internalRole: UserRole.VACTECH_SERVICE_USER } });
     const linkedEmployee = await upsertEntraUser({ identitySubject: `employee:${suffix}`, email: `employee-${suffix}@test.invalid`, displayName: "Employee", internalRole: UserRole.PORTAL_ADMINISTRATOR });
     expect(linkedEmployee.internalRole).toBe(UserRole.VACTECH_SERVICE_USER);
+  });
+
+  it("takes only the starting employee role from Entra, highest role first", () => {
+    expect(startingEmployeeRole(["VacTech.ServiceUser", "Portal.Administrator"])).toBe(UserRole.PORTAL_ADMINISTRATOR);
+    expect(startingEmployeeRole(["VacTech.Manager"])).toBe(UserRole.VACTECH_MANAGER);
+    expect(startingEmployeeRole(["Something.Else"])).toBeNull();
+    expect(startingEmployeeRole(undefined)).toBeNull();
   });
 
   it("denies manager access immediately after a persisted role downgrade", async () => {
