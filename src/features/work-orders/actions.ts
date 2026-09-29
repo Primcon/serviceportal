@@ -10,7 +10,8 @@ import { UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
-import { deletePrivateFile, storePrivateBuffer, storePrivateFile } from "@/services/private-storage";
+import { detectDocumentType, detectPhotoType, supportedDocumentDescription, supportedPhotoDescription } from "@/services/file-types";
+import { deletePrivateFile, storePrivateBuffer } from "@/services/private-storage";
 import { logCustomerNotification, statusChangeNotification } from "@/services/notifications";
 import { ensureInitialStages } from "./initial-stages";
 
@@ -403,13 +404,24 @@ export async function createCustomerVisiblePhotos(formData: FormData): Promise<A
     if (files.length > 20) {
       throw new UserFacingError("Upload up to 20 photos at a time.");
     }
-    if (files.some((file) => !file.type.startsWith("image/") || file.size > 10 * 1024 * 1024)) {
-      throw new UserFacingError("Photos must be images no larger than 10 MB.");
+    const oversized = files.find((file) => file.size > 10 * 1024 * 1024);
+    if (oversized) {
+      throw new UserFacingError(`${safeFileName(oversized, "A photo")} is larger than 10 MB.`);
     }
 
     const internalUser = await getActiveInternalUser();
     const workOrder = await getAuthorizedWorkOrder(input.workOrderId);
+    // Check every file's real contents before storing any, so one bad file doesn't leave a partial batch.
+    const photoTypes: string[] = [];
     for (const file of files) {
+      const photoType = await detectPhotoType(Buffer.from(await file.arrayBuffer()));
+      if (!photoType) {
+        throw new UserFacingError(`${safeFileName(file, "A file")} isn't a supported photo. Upload ${supportedPhotoDescription} images.`);
+      }
+      photoTypes.push(photoType);
+    }
+    for (const [index, file] of files.entries()) {
+      const photoType = photoTypes[index];
       const source = Buffer.from(await file.arrayBuffer());
       const image = sharp(source);
       const [optimized, thumbnail] = await Promise.all([
@@ -419,7 +431,7 @@ export async function createCustomerVisiblePhotos(formData: FormData): Promise<A
       const storageKey = storageKeyPrefix(input.workOrderId);
       const keys = { original: `${storageKey}/original`, optimized: `${storageKey}/optimized.webp`, thumbnail: `${storageKey}/thumbnail.webp` };
       const stored = await Promise.all([
-        storePrivateBuffer({ key: keys.original, content: source, contentType: file.type }),
+        storePrivateBuffer({ key: keys.original, content: source, contentType: photoType }),
         storePrivateBuffer({ key: keys.optimized, content: optimized, contentType: "image/webp" }),
         storePrivateBuffer({ key: keys.thumbnail, content: thumbnail, contentType: "image/webp" }),
       ]);
@@ -441,7 +453,7 @@ export async function createCustomerVisiblePhotos(formData: FormData): Promise<A
               optimizedStorageKey: keys.optimized,
               thumbnailStorageKey: keys.thumbnail,
               fileName: safeFileName(file, "photo"),
-              mimeType: file.type,
+              mimeType: photoType,
               sizeBytes: file.size,
               uploadedById: internalUser.id,
             },
@@ -495,8 +507,14 @@ export async function createInternalDocument(formData: FormData): Promise<Action
     const file = uploadedDocument(formData);
     const internalUser = await getActiveInternalUser();
     const workOrder = await getAuthorizedWorkOrder(input.workOrderId);
+    const content = Buffer.from(await file.arrayBuffer());
+    const fileName = safeFileName(file, "document");
+    const documentMimeType = detectDocumentType(content, fileName);
+    if (!documentMimeType) {
+      throw new UserFacingError(`${fileName} isn't a supported document type. Upload ${supportedDocumentDescription}.`);
+    }
     const originalKey = `${storageKeyPrefix(input.workOrderId)}/original`;
-    const stored = await storePrivateFile({ key: originalKey, file });
+    const stored = await storePrivateBuffer({ key: originalKey, content, contentType: documentMimeType });
     if (!stored) {
       throw new UserFacingError("Private file storage is not configured.");
     }
@@ -511,8 +529,8 @@ export async function createInternalDocument(formData: FormData): Promise<Action
             visibility: input.visibility,
             documentType: input.documentType,
             originalStorageKey: originalKey,
-            fileName: safeFileName(file, "document"),
-            mimeType: file.type || "application/octet-stream",
+            fileName,
+            mimeType: documentMimeType,
             sizeBytes: file.size,
             uploadedById: internalUser.id,
           },
