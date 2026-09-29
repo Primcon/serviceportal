@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaClient, UserRole } from "@prisma/client";
-import { getActiveInternalUserForRoles } from "./authorization";
+import { assertPersistedInternalRole, getActiveInternalUserForRoles } from "./authorization";
 import { grantUserAccess, updateDocumentVisibility, updateInternalUserRole, updateServiceStage } from "@/features/admin/actions";
 import { approveAccessRequest } from "@/features/access/actions";
 import { createCompany, createCustomerVisiblePhotos, createEquipment, createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
@@ -57,13 +57,15 @@ describe("database-backed internal authorization", () => {
   });
 
   it("honors a disabled persisted internal user", async () => {
-    process.env.DEVELOPMENT_INTERNAL_ROLE = UserRole.VACTECH_MANAGER;
-    const user = await getActiveInternalUserForRoles([UserRole.VACTECH_MANAGER]);
-    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+    // Uses its own user: disabling the shared development manager would break other test
+    // files that run at the same time.
+    const user = await prisma.user.create({
+      data: { identitySubject: `integration:disabled-manager:${crypto.randomUUID()}`, email: `disabled-manager-${crypto.randomUUID()}@test.invalid`, displayName: "Disabled Manager", internalRole: UserRole.VACTECH_MANAGER, isActive: false },
+    });
     try {
-      await expect(getActiveInternalUserForRoles([UserRole.VACTECH_MANAGER])).rejects.toThrow("Your account is inactive.");
+      await expect(assertPersistedInternalRole(user.id, [UserRole.VACTECH_MANAGER], UserRole.VACTECH_MANAGER)).rejects.toThrow("Your account is inactive.");
     } finally {
-      await prisma.user.update({ where: { id: user.id }, data: { isActive: true } });
+      await prisma.user.delete({ where: { id: user.id } });
     }
   });
 

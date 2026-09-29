@@ -10,6 +10,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 const prisma = new PrismaClient();
 const suffix = crypto.randomUUID().slice(0, 8);
 const savedEnvironment = { ...process.env };
+const createdCenterCodes: string[] = [];
 
 function form(values: Record<string, string>) {
   const formData = new FormData();
@@ -27,7 +28,7 @@ afterAll(async () => {
   await prisma.workOrder.deleteMany({ where: { workOrderNumber: `SET-${suffix}` } });
   await prisma.equipment.deleteMany({ where: { serialNumber: `SET-${suffix}` } });
   await prisma.company.deleteMany({ where: { name: `Settings Company ${suffix}` } });
-  await prisma.serviceCenter.deleteMany({ where: { name: { contains: suffix } } });
+  await prisma.serviceCenter.deleteMany({ where: { OR: [{ name: { contains: suffix } }, { code: { in: createdCenterCodes } }] } });
   process.env = savedEnvironment;
   await prisma.$disconnect();
 });
@@ -56,7 +57,9 @@ describe("picklist settings", () => {
 
 describe("service center settings", () => {
   it("locks a center's code once work order numbers use it, but allows renaming", async () => {
-    const code = `Q${suffix.replace(/[^a-z]/gi, "").slice(0, 2).toUpperCase().padEnd(2, "Q")}`.slice(0, 3);
+    // A random four-letter code (about 450,000 possibilities) so runs never collide with each other.
+    const code = Array.from(crypto.getRandomValues(new Uint8Array(4)), (byte) => String.fromCharCode(65 + (byte % 26))).join("");
+    createdCenterCodes.push(code);
     await expect(saveServiceCenter(form({ code, name: `Test center ${suffix}` }))).resolves.toMatchObject({ status: "success" });
     await expect(saveServiceCenter(form({ code: code.toLowerCase(), name: `Duplicate ${suffix}` }))).resolves.toEqual({ status: "error", message: `Service center ${code} already exists.` });
     const center = await prisma.serviceCenter.findUniqueOrThrow({ where: { code } });
