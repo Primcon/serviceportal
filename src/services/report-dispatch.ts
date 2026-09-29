@@ -3,7 +3,7 @@ import { ReportFrequency, ReportRunStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { UserFacingError } from "@/lib/errors";
 import { emailConfiguration } from "@/services/notifications";
-import { generateReportWorkbook, ReportFilters } from "@/services/reports";
+import { generateReportWorkbook, parseStoredReportFilters } from "@/services/reports";
 
 const retryDelayMilliseconds = 5 * 60 * 1000;
 
@@ -34,7 +34,7 @@ async function deliverSchedule(scheduleId: string, dueAt?: Date) {
   }
 
   try {
-    const report = await generateReportWorkbook(schedule.reportType, (schedule.filters ?? {}) as ReportFilters);
+    const report = await generateReportWorkbook(schedule.reportType, parseStoredReportFilters(schedule.filters, schedule.timeZone));
     const poller = await configuration.client.beginSend({
       senderAddress: configuration.senderAddress,
       recipients: { to: schedule.recipientEmails.map((address) => ({ address })) },
