@@ -63,6 +63,6 @@ describe("Entra account linking", () => {
     await prisma.user.update({ where: { id: employee.id }, data: { internalRole: UserRole.VACTECH_MANAGER } });
     await expect(assertPersistedInternalRole(employee.id, [UserRole.VACTECH_MANAGER])).resolves.toMatchObject({ id: employee.id });
     await prisma.user.update({ where: { id: employee.id }, data: { internalRole: UserRole.VACTECH_SERVICE_USER } });
-    await expect(assertPersistedInternalRole(employee.id, [UserRole.VACTECH_MANAGER])).rejects.toThrow("Internal access is required.");
+    await expect(assertPersistedInternalRole(employee.id, [UserRole.VACTECH_MANAGER])).rejects.toThrow("You don't have permission to do that.");
   });
 });

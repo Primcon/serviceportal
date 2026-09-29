@@ -1,16 +1,22 @@
 @import url("https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Roboto:wght@500;700&display=swap");
 @import "tailwindcss";
 
-:root {
-	--ink: #000000;
-	--muted: #5a5a5a;
-	--paper: #ffffff;
-	--surface: #f6f6f6;
-	--line: #d9d9d9;
-	--brand: #ea3435;
-	--brand-strong: #c72028;
-	--brand-soft: #fde5e5;
-	--danger: #b42318;
+/* Brand tokens. Use them through Tailwind utilities (bg-brand, text-muted, border-line). */
+@theme {
+	--color-ink: #000000;
+	--color-body: #333333;
+	--color-muted: #5a5a5a;
+	--color-subtle: #a3a3a3;
+	--color-paper: #ffffff;
+	--color-surface: #f6f6f6;
+	--color-line: #d9d9d9;
+	--color-brand: #ea3435;
+	--color-brand-strong: #c72028;
+	--color-brand-soft: #fde5e5;
+	--color-danger: #b42318;
+	--color-danger-soft: #fff4f4;
+	--color-success: #146c43;
+	--color-success-soft: #e4f5ec;
 }
 
 * {
@@ -19,8 +25,8 @@
 
 body {
 	margin: 0;
-	background: var(--paper);
-	color: var(--ink);
+	background: var(--color-paper);
+	color: var(--color-ink);
 	font-family: "Open Sans", "Segoe UI", sans-serif;
 }
 
