@@ -101,14 +101,15 @@ afterAll(async () => {
 
 describe("customer query authorization", () => {
   it("returns only work orders for locations granted to the customer", async () => {
-    const workOrders = await listCustomerWorkOrders(customerIdentitySubject);
+    const { workOrders, total } = await listCustomerWorkOrders(customerIdentitySubject);
+    expect(total).toBe(1);
     expect(workOrders).toHaveLength(1);
     expect(workOrders[0].id).toBe(workOrderId);
     expect(workOrders.some((workOrder) => workOrder.id === otherWorkOrderId)).toBe(false);
   });
 
   it("rejects equipment and work orders at other locations in the same company", async () => {
-    const equipment = await listCustomerEquipment(customerIdentitySubject);
+    const { equipment } = await listCustomerEquipment(customerIdentitySubject);
     expect(equipment).toHaveLength(1);
     expect(equipment[0].id).toBe(equipmentId);
 
@@ -239,7 +240,7 @@ describe("customer query authorization", () => {
   it("rejects disabled customer users", async () => {
     await prisma.user.update({ where: { id: customerId }, data: { isActive: false } });
     try {
-      expect(await listCustomerWorkOrders(customerIdentitySubject)).toEqual([]);
+      expect((await listCustomerWorkOrders(customerIdentitySubject)).workOrders).toEqual([]);
       expect(await getCustomerWorkOrder(customerIdentitySubject, workOrderId)).toBeNull();
     } finally {
       await prisma.user.update({ where: { id: customerId }, data: { isActive: true } });

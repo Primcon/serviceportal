@@ -69,7 +69,8 @@ describe("user directory filters", () => {
     await createUser("filter-manager", { internalRole: UserRole.VACTECH_MANAGER, displayName: name });
 
     const results = await listInternalUsers({ search: name, role: UserRole.VACTECH_SERVICE_USER });
-    expect(results.map((user) => user.id)).toEqual([technician.id]);
+    expect(results.users.map((user) => user.id)).toEqual([technician.id]);
+    expect(results.total).toBe(1);
   });
 });
 
