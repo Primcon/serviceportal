@@ -1,23 +1,106 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Ban, CheckCircle2, Plus, ShieldCheck, UserCog, X } from "lucide-react";
+import { Ban, CheckCircle2, Plus, ShieldCheck, UserCog } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 import ActionFeedbackForm from "@/components/action-feedback-form";
+import { Badge } from "@/components/ui/badge";
+import { Field } from "@/components/ui/field";
+import { Modal } from "@/components/ui/modal";
+import { buttonStyles, fieldStyles } from "@/components/ui/styles";
 import { grantUserAccess, revokeUserAccess, updateInternalUserRole, updateUserActiveStatus } from "@/features/admin/actions";
+import { formatEnumLabel } from "@/lib/labels";
 
 type User = { id: string; displayName: string; email: string; isActive: boolean; internalRole: UserRole | null; access: { id: string; role: string; scope: string; company: { name: string }; location: { name: string } | null }[] };
 type Company = { id: string; name: string; locations: { id: string; name: string }[] };
 
-const fieldClass = "w-full border border-[#d9d9d9] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#ea3435]";
-
-function label(value: string) {
-  return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 export default function UserDirectory({ users, companies }: { users: User[]; companies: Company[] }) {
   const dialogId = useId();
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  // Read the user from the latest server data, so the dialog reflects each saved change.
+  const selectedUser = users.find((user) => user.id === selectedUserId) ?? null;
 
-  return <><div className="border-y border-[#d9d9d9] bg-white">{users.map((user) => <article className="grid gap-4 border-b border-[#d9d9d9] px-5 py-5 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center" key={user.id}><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{user.displayName}</h3><span className={user.isActive ? "bg-[#fde5e5] px-2 py-0.5 text-xs font-bold text-[#b42318]" : "bg-[#f6f6f6] px-2 py-0.5 text-xs font-bold text-[#5a5a5a]"}>{user.isActive ? "Active" : "Disabled"}</span>{user.internalRole && <span className="border border-[#d9d9d9] px-2 py-0.5 text-xs font-bold text-[#5a5a5a]">{label(user.internalRole)}</span>}</div><p className="mt-1 text-sm text-[#5a5a5a]">{user.email}</p></div><p className="text-sm text-[#5a5a5a]">{user.access.length ? `${user.access.length} customer grant${user.access.length === 1 ? "" : "s"}` : "No customer grants"}</p><button className="flex items-center justify-center gap-2 border border-[#000000] px-3 py-2 text-sm font-bold text-[#000000] hover:border-[#ea3435] hover:text-[#ea3435]" onClick={() => setSelectedUser(user)} type="button"><UserCog size={16} /> Manage</button></article>)}</div>{selectedUser && <div className="fixed inset-0 z-30 grid place-items-center bg-black/50 p-5" onMouseDown={() => setSelectedUser(null)} role="presentation"><section aria-labelledby={`${dialogId}-title`} aria-modal="true" className="max-h-[calc(100vh-2.5rem)] w-full max-w-3xl overflow-y-auto border border-[#d9d9d9] bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()} role="dialog"><div className="flex items-start justify-between gap-5 border-b border-[#d9d9d9] pb-5"><div><p className="text-sm font-bold tracking-[0.1em] text-[#ea3435]">USER ADMINISTRATION</p><h2 className="mt-2 text-2xl font-bold" id={`${dialogId}-title`}>{selectedUser.displayName}</h2><p className="mt-2 text-sm text-[#5a5a5a]">{selectedUser.email}</p></div><button aria-label="Close user administration" className="grid size-10 shrink-0 place-items-center border border-[#d9d9d9] text-[#5a5a5a] hover:border-[#ea3435] hover:text-[#ea3435]" onClick={() => setSelectedUser(null)} type="button"><X size={20} /></button></div><div className="mt-6 grid gap-6 lg:grid-cols-2"><section><h3 className="font-bold">Account access</h3><p className="mt-1 text-sm text-[#5a5a5a]">Disabled users lose portal access immediately.</p><ActionFeedbackForm action={updateUserActiveStatus} className="mt-4" successMessage="Access status updated."><input name="userId" type="hidden" value={selectedUser.id} /><input name="isActive" type="hidden" value={selectedUser.isActive ? "false" : "true"} /><button className={selectedUser.isActive ? "flex items-center gap-2 border border-[#b42318] px-3 py-2.5 text-sm font-bold text-[#b42318]" : "flex items-center gap-2 bg-[#ea3435] px-3 py-2.5 text-sm font-bold text-white"}>{selectedUser.isActive ? <Ban size={16} /> : <CheckCircle2 size={16} />}{selectedUser.isActive ? "Disable access" : "Enable access"}</button></ActionFeedbackForm>{selectedUser.internalRole && <ActionFeedbackForm action={updateInternalUserRole} className="mt-6 grid gap-3 border-t border-[#d9d9d9] pt-5" successMessage="Internal role updated."><input name="userId" type="hidden" value={selectedUser.id} /><label className="grid gap-1.5 text-sm font-bold" htmlFor={`${dialogId}-role`}>Internal role<select className={fieldClass} defaultValue={selectedUser.internalRole} id={`${dialogId}-role`} name="internalRole"><option value="PORTAL_ADMINISTRATOR">Portal administrator</option><option value="VACTECH_MANAGER">VacTech manager</option><option value="VACTECH_SERVICE_USER">VacTech service user</option></select></label><button className="w-fit bg-[#000000] px-3 py-2.5 text-sm font-bold text-white hover:bg-[#333333]">Update role</button></ActionFeedbackForm>}</section><section><div className="flex items-center gap-2"><ShieldCheck className="text-[#ea3435]" size={19} /><h3 className="font-bold">Customer access</h3></div><div className="mt-4 grid gap-2">{selectedUser.access.length ? selectedUser.access.map((grant) => <div className="flex items-center justify-between gap-3 border-l-2 border-[#fde5e5] pl-3 text-sm" key={grant.id}><span>{grant.company.name} · {grant.location?.name ?? "All locations"}</span><ActionFeedbackForm action={revokeUserAccess} successMessage="Access revoked."><input name="accessId" type="hidden" value={grant.id} /><button className="text-xs font-bold text-[#b42318]">Revoke</button></ActionFeedbackForm></div>) : <p className="text-sm text-[#5a5a5a]">No customer access grants.</p>}</div><ActionFeedbackForm action={grantUserAccess} className="mt-6 grid gap-3 border-t border-[#d9d9d9] pt-5" successMessage="Customer access granted."><input name="userId" type="hidden" value={selectedUser.id} /><label className="grid gap-1.5 text-sm font-bold" htmlFor={`${dialogId}-company`}>Customer company<select className={fieldClass} id={`${dialogId}-company`} name="companyId" required><option value="">Select company</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label><label className="grid gap-1.5 text-sm font-bold" htmlFor={`${dialogId}-location`}>Access scope<select className={fieldClass} id={`${dialogId}-location`} name="locationId"><option value="">All company locations</option>{companies.flatMap((company) => company.locations.map((location) => <option key={location.id} value={location.id}>{company.name} · {location.name}</option>))}</select></label><button className="flex w-fit items-center gap-2 bg-[#ea3435] px-3 py-2.5 text-sm font-bold text-white hover:bg-[#c72028]"><Plus size={16} /> Grant access</button></ActionFeedbackForm></section></div></section></div>}</>;
+  return (
+    <>
+      <div className="border-y border-line bg-paper">
+        {users.map((user) => (
+          <article className="grid gap-4 border-b border-line px-5 py-5 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center" key={user.id}>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-bold">{user.displayName}</h3>
+                <Badge tone={user.isActive ? "brand" : "neutral"}>{user.isActive ? "Active" : "Disabled"}</Badge>
+                {user.internalRole && <Badge tone="outline">{formatEnumLabel(user.internalRole)}</Badge>}
+              </div>
+              <p className="mt-1 text-sm text-muted">{user.email}</p>
+            </div>
+            <p className="text-sm text-muted">{user.access.length ? `${user.access.length} customer grant${user.access.length === 1 ? "" : "s"}` : "No customer grants"}</p>
+            <button className={buttonStyles({ variant: "outline", size: "sm" })} onClick={() => setSelectedUserId(user.id)} type="button"><UserCog size={16} /> Manage</button>
+          </article>
+        ))}
+      </div>
+
+      {selectedUser && (
+        <Modal eyebrow="USER ADMINISTRATION" title={selectedUser.displayName} description={selectedUser.email} onClose={() => setSelectedUserId(null)} size="lg">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <section>
+              <h3 className="font-bold">Account access</h3>
+              <p className="mt-1 text-sm text-muted">Disabled users lose portal access immediately.</p>
+              <ActionFeedbackForm action={updateUserActiveStatus} className="mt-4" successMessage="Access status updated.">
+                <input name="userId" type="hidden" value={selectedUser.id} />
+                <input name="isActive" type="hidden" value={selectedUser.isActive ? "false" : "true"} />
+                <button className={buttonStyles({ variant: selectedUser.isActive ? "danger" : "primary" })}>
+                  {selectedUser.isActive ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                  {selectedUser.isActive ? "Disable access" : "Enable access"}
+                </button>
+              </ActionFeedbackForm>
+              {selectedUser.internalRole && (
+                <ActionFeedbackForm action={updateInternalUserRole} className="mt-6 grid gap-3 border-t border-line pt-5" successMessage="Internal role updated.">
+                  <input name="userId" type="hidden" value={selectedUser.id} />
+                  <Field label="Internal role" htmlFor={`${dialogId}-role`} hint="Roles are managed here. Changing a role in Entra has no effect after an employee's first sign-in.">
+                    <select className={fieldStyles} defaultValue={selectedUser.internalRole} id={`${dialogId}-role`} key={selectedUser.internalRole} name="internalRole">
+                      <option value="PORTAL_ADMINISTRATOR">Portal administrator</option>
+                      <option value="VACTECH_MANAGER">VacTech manager</option>
+                      <option value="VACTECH_SERVICE_USER">VacTech service user</option>
+                    </select>
+                  </Field>
+                  <button className={buttonStyles({ variant: "secondary", className: "w-fit" })}>Update role</button>
+                </ActionFeedbackForm>
+              )}
+            </section>
+
+            <section>
+              <div className="flex items-center gap-2"><ShieldCheck className="text-brand" size={19} /><h3 className="font-bold">Customer access</h3></div>
+              <div className="mt-4 grid gap-2">
+                {selectedUser.access.length ? selectedUser.access.map((grant) => (
+                  <div className="flex items-center justify-between gap-3 border-l-2 border-brand-soft pl-3 text-sm" key={grant.id}>
+                    <span>{grant.company.name} · {grant.location?.name ?? "All locations"}</span>
+                    <ActionFeedbackForm action={revokeUserAccess} successMessage="Access revoked.">
+                      <input name="accessId" type="hidden" value={grant.id} />
+                      <button className="text-xs font-bold text-danger">Revoke</button>
+                    </ActionFeedbackForm>
+                  </div>
+                )) : <p className="text-sm text-muted">No customer access grants.</p>}
+              </div>
+              <ActionFeedbackForm action={grantUserAccess} className="mt-6 grid gap-3 border-t border-line pt-5" successMessage="Customer access granted.">
+                <input name="userId" type="hidden" value={selectedUser.id} />
+                <Field label="Customer company" htmlFor={`${dialogId}-company`}>
+                  <select className={fieldStyles} id={`${dialogId}-company`} name="companyId" required>
+                    <option value="">Select company</option>
+                    {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Access scope" htmlFor={`${dialogId}-location`}>
+                  <select className={fieldStyles} id={`${dialogId}-location`} name="locationId">
+                    <option value="">All company locations</option>
+                    {companies.flatMap((company) => company.locations.map((location) => <option key={location.id} value={location.id}>{company.name} · {location.name}</option>))}
+                  </select>
+                </Field>
+                <button className={buttonStyles({ className: "w-fit" })}><Plus size={16} /> Grant access</button>
+              </ActionFeedbackForm>
+            </section>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
 }

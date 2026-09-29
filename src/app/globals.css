@@ -1,7 +1,10 @@
-@import url("https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Roboto:wght@500;700&display=swap");
 @import "tailwindcss";
 
-/* Brand tokens. Use them through Tailwind utilities (bg-brand, text-muted, border-line). */
+/*
+ * Design tokens. Use them through Tailwind utilities (bg-brand, text-muted, border-line,
+ * font-display) and never as hard-coded values, so a rebrand only changes this block.
+ * Shared building blocks live in src/components/ui.
+ */
 @theme {
 	--color-ink: #000000;
 	--color-body: #333333;
@@ -17,17 +20,15 @@
 	--color-danger-soft: #fff4f4;
 	--color-success: #146c43;
 	--color-success-soft: #e4f5ec;
-}
 
-* {
-	box-sizing: border-box;
+	--font-sans: var(--font-open-sans), "Segoe UI", system-ui, sans-serif;
+	--font-display: var(--font-roboto), "Segoe UI", system-ui, sans-serif;
 }
 
 body {
-	margin: 0;
 	background: var(--color-paper);
 	color: var(--color-ink);
-	font-family: "Open Sans", "Segoe UI", sans-serif;
+	font-family: var(--font-sans);
 }
 
 h1,
@@ -36,5 +37,10 @@ h3,
 h4,
 h5,
 h6 {
-	font-family: "Roboto", "Segoe UI", sans-serif;
+	font-family: var(--font-display);
+}
+
+:focus-visible {
+	outline: 2px solid var(--color-brand);
+	outline-offset: 2px;
 }
