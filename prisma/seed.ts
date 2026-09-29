@@ -70,12 +70,26 @@ const equipment = [
   { id: seedId(4, 6), companyId: companies[2].id, locationId: null, productModel: "Edwards nXDS15i", serialNumber: "EX-NXD-71450", description: "Scroll pump, analytical lab" },
 ];
 
+const serviceCenter = { id: seedId(8, 1), code: "AZ", name: "Arizona service center" };
+
 type SeedWorkOrder = {
   id: string;
   equipmentIndex: number;
   number: string;
   summary: string;
   priority: string | null;
+  serviceType?: string;
+  intake?: {
+    toolId?: string;
+    oilType?: string;
+    oilWeight?: string;
+    reasonForService?: string;
+    contaminants?: string;
+    copperClassification?: "COPPER" | "NON_COPPER";
+    customerContactName?: string;
+    customerContactEmail?: string;
+    customerPurchaseOrder?: string;
+  };
   receivedDaysAgo: number;
   path: { stage: string; daysAgo: number; condition?: WorkOrderCondition }[];
   updates?: { title: string; body: string; daysAgo: number }[];
@@ -84,32 +98,33 @@ type SeedWorkOrder = {
 
 const workOrders: SeedWorkOrder[] = [
   {
-    id: seedId(5, 1), equipmentIndex: 0, number: "50112 AZ", summary: "Pump rebuild. Contaminants: NF3.", priority: "High", receivedDaysAgo: 12,
+    id: seedId(5, 1), equipmentIndex: 0, number: "50112 AZ", summary: "Pump rebuild.", priority: "Expedite", serviceType: "Rebuild", receivedDaysAgo: 12,
+    intake: { toolId: "ETCH-07", oilType: "PFPE", oilWeight: "2.5 lb", reasonForService: "Pump rebuild", contaminants: "NF3", copperClassification: "NON_COPPER", customerContactName: "Taylor Brooks", customerContactEmail: "taylor.brooks@desertfab.test", customerPurchaseOrder: "PO-55120" },
     path: [{ stage: "RECEIVED", daysAgo: 12 }, { stage: "INITIAL_INSPECTION", daysAgo: 11 }, { stage: "EVALUATION", daysAgo: 9 }, { stage: "REPAIR_IN_PROGRESS", daysAgo: 4 }],
     updates: [{ title: "Pump received", body: "Your pump arrived and passed intake inspection. Photos of its arrival condition are attached.", daysAgo: 12 }, { title: "Rebuild underway", body: "Teardown found worn bearings and seals. A major kit has been installed and reassembly is in progress.", daysAgo: 4 }],
     findings: [{ title: "Bearing noise on arrival", body: "Audible bearing noise at spin-down. Rotor shows light scoring on the inlet stage.", daysAgo: 11 }],
   },
   {
-    id: seedId(5, 2), equipmentIndex: 1, number: "50118 AZ", summary: "Turbo pump service, error E-023.", priority: null, receivedDaysAgo: 7,
+    id: seedId(5, 2), equipmentIndex: 1, number: "50118 AZ", summary: "Turbo pump service, error E-023.", priority: "Standard", serviceType: "Repair", receivedDaysAgo: 7,
     path: [{ stage: "RECEIVED", daysAgo: 7 }, { stage: "QUOTE_PREPARATION", daysAgo: 5 }, { stage: "AWAITING_CUSTOMER_APPROVAL", daysAgo: 3, condition: "AWAITING_CUSTOMER" }],
     updates: [{ title: "Quote sent", body: "We sent a repair quote to your purchasing contact. Work continues as soon as it's approved.", daysAgo: 3 }],
   },
   {
-    id: seedId(5, 3), equipmentIndex: 2, number: "50121 AZ", summary: "Annual preventive maintenance.", priority: "Normal", receivedDaysAgo: 2,
+    id: seedId(5, 3), equipmentIndex: 2, number: "50121 AZ", summary: "Annual preventive maintenance.", priority: "Standard", serviceType: "Preventive maintenance", receivedDaysAgo: 2,
     path: [{ stage: "RECEIVED", daysAgo: 2 }],
   },
   {
-    id: seedId(5, 4), equipmentIndex: 3, number: "50097 OR", summary: "Pump rebuild after seizure.", priority: "High", receivedDaysAgo: 30,
+    id: seedId(5, 4), equipmentIndex: 3, number: "50097 AZ", summary: "Pump rebuild after seizure.", priority: "Rush", serviceType: "Rebuild", receivedDaysAgo: 30,
     path: [{ stage: "RECEIVED", daysAgo: 30 }, { stage: "EVALUATION", daysAgo: 27 }, { stage: "REPAIR_IN_PROGRESS", daysAgo: 20 }, { stage: "TESTING", daysAgo: 14 }, { stage: "SHIPPED", daysAgo: 10 }, { stage: "COMPLETED", daysAgo: 8 }],
     updates: [{ title: "Repair complete and shipped", body: "Your pump passed final testing and shipped by ground freight.", daysAgo: 10 }],
     findings: [{ title: "Seized rotor", body: "Rotor seized due to process deposits. Cleaned, replaced bearings and seals, balanced rotor.", daysAgo: 26 }],
   },
   {
-    id: seedId(5, 5), equipmentIndex: 4, number: "50115 OR", summary: "Leak rate out of spec.", priority: null, receivedDaysAgo: 9,
+    id: seedId(5, 5), equipmentIndex: 4, number: "50115 AZ", summary: "Leak rate out of spec.", priority: "Standard", serviceType: "Repair", receivedDaysAgo: 9,
     path: [{ stage: "RECEIVED", daysAgo: 9 }, { stage: "REPAIR_AUTHORIZED", daysAgo: 6 }, { stage: "REPAIR_IN_PROGRESS", daysAgo: 5, condition: "WAITING_ON_PARTS" }],
   },
   {
-    id: seedId(5, 6), equipmentIndex: 5, number: "50120 AZ", summary: "Warranty review: noise after previous repair.", priority: null, receivedDaysAgo: 3,
+    id: seedId(5, 6), equipmentIndex: 5, number: "50120 AZ", summary: "Warranty review: noise after previous repair.", priority: "Standard", serviceType: "Warranty", receivedDaysAgo: 3,
     path: [{ stage: "RECEIVED", daysAgo: 3 }, { stage: "INITIAL_INSPECTION", daysAgo: 2, condition: "WARRANTY_REVIEW" }],
   },
 ];
@@ -147,8 +162,16 @@ async function main() {
   for (const location of locations) {
     await prisma.location.upsert({ where: { id: location.id }, update: {}, create: location });
   }
+  await prisma.serviceCenter.upsert({ where: { code: serviceCenter.code }, update: {}, create: serviceCenter });
+  const center = await prisma.serviceCenter.findUniqueOrThrow({ where: { code: serviceCenter.code } });
+
   for (const item of equipment) {
-    await prisma.equipment.upsert({ where: { id: item.id }, update: {}, create: item });
+    // Seed models are written "Manufacturer Model"; the catalog stores the two parts separately.
+    const [manufacturer, ...modelParts] = item.productModel.split(" ");
+    const name = modelParts.join(" ");
+    const catalogModel = await prisma.productModel.findFirst({ where: { manufacturer: { equals: manufacturer, mode: "insensitive" }, name: { equals: name, mode: "insensitive" } } })
+      ?? await prisma.productModel.create({ data: { manufacturer, name } });
+    await prisma.equipment.upsert({ where: { id: item.id }, update: {}, create: { ...item, productModelId: catalogModel.id } });
   }
 
   const grants = [
@@ -175,6 +198,9 @@ async function main() {
           equipmentId: unit.id,
           summary: order.summary,
           priority: order.priority,
+          serviceType: order.serviceType,
+          serviceCenterId: center.id,
+          ...order.intake,
           serviceStageId: currentStage.id,
           condition: last.condition ?? "NORMAL",
           customerFacingStatus: currentStage.customerFacingStatus as CustomerFacingStatus,

@@ -67,7 +67,24 @@ enum DocumentType {
   TEST_REPORT
   FINAL_SERVICE_REPORT
   SHIPPING_DOCUMENTATION
+  INVOICE
+  MANUAL
+  WARRANTY_CERTIFICATE
+  SIGNED_TRAVELER
   OTHER
+}
+
+/// Whether a pump has been used on a copper process. Copper and non-copper pumps are handled separately to avoid cross-contamination.
+enum CopperClassification {
+  UNKNOWN
+  COPPER
+  NON_COPPER
+}
+
+/// The editable picklists used on work orders.
+enum ListKind {
+  PRIORITY
+  SERVICE_TYPE
 }
 
 enum AccessRequestStatus {
@@ -103,6 +120,11 @@ enum ReportRunStatus {
 model Company {
   id String @id @default(uuid()) @db.Uuid
   name String
+  /// Set when the customer is archived: hidden from pickers, history kept.
+  archivedAt DateTime?
+  /// Where an imported record came from (for example "wordpress") and its ID there, so imports can be re-run safely.
+  legacySource String?
+  legacyId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   locations Location[]
@@ -110,6 +132,7 @@ model Company {
   workOrders WorkOrder[]
   userAccess UserAccess[]
   accessRequests AccessRequest[]
+  @@unique([legacySource, legacyId])
   @@index([name])
 }
 
@@ -122,6 +145,9 @@ model Location {
   region String?
   postalCode String?
   country String?
+  archivedAt DateTime?
+  legacySource String?
+  legacyId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -129,6 +155,7 @@ model Location {
   workOrders WorkOrder[]
   userAccess UserAccess[]
   @@unique([companyId, name])
+  @@unique([legacySource, legacyId])
   @@index([companyId])
 }
 
@@ -141,6 +168,8 @@ model User {
   displayName String
   isActive Boolean @default(true)
   internalRole UserRole?
+  legacySource String?
+  legacyId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   access UserAccess[]
@@ -153,6 +182,7 @@ model User {
   reviewedRequests AccessRequest[] @relation("AccessRequestReviewer")
   notificationPreference NotificationPreference?
   reportSchedules ReportSchedule[] @relation("ReportScheduleCreator")
+  @@unique([legacySource, legacyId])
 }
 
 model NotificationPreference {
@@ -184,17 +214,61 @@ model Equipment {
   id String @id @default(uuid()) @db.Uuid
   companyId String @db.Uuid
   locationId String? @db.Uuid
+  /// The catalog model this pump is. productModel keeps the display name ("Manufacturer Model") in step with it.
+  productModelId String? @db.Uuid
   productModel String
   serialNumber String
   description String?
+  archivedAt DateTime?
+  legacySource String?
+  legacyId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
   location Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  catalogModel ProductModel? @relation(fields: [productModelId], references: [id], onDelete: Restrict)
   workOrders WorkOrder[]
   attachments Attachment[]
+  @@unique([legacySource, legacyId])
   @@index([companyId, serialNumber])
   @@index([locationId])
+  @@index([productModelId])
+}
+
+/// A manufacturer and model pair, such as Edwards IL70N. Manuals and (later) warranty terms attach here once for every pump of the model.
+model ProductModel {
+  id String @id @default(uuid()) @db.Uuid
+  manufacturer String?
+  name String
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  equipment Equipment[]
+  @@index([name])
+}
+
+/// A VacTech facility that performs repairs. Its code is the suffix on work order (WIP) numbers, such as "AZ" in "48366 AZ".
+model ServiceCenter {
+  id String @id @default(uuid()) @db.Uuid
+  code String @unique
+  name String
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workOrders WorkOrder[]
+}
+
+/// An option in one of the editable work order picklists (priority, service type).
+model ListOption {
+  id String @id @default(uuid()) @db.Uuid
+  kind ListKind
+  label String
+  sortOrder Int @default(0)
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([kind, label])
+  @@index([kind, isActive, sortOrder])
 }
 
 model ServiceStage {
@@ -218,21 +292,38 @@ model WorkOrder {
   locationId String? @db.Uuid
   equipmentId String @db.Uuid
   summary String
+  /// Chosen from the SERVICE_TYPE and PRIORITY picklists. Stored as text so imported values survive list changes.
   serviceType String?
   priority String?
   customerPurchaseOrder String?
   rmaReference String?
+  serviceCenterId String? @db.Uuid
   receivedAt DateTime?
+  promisedAt DateTime?
   completedAt DateTime?
+  // Intake details from job order form 852-01-01.
+  toolId String?
+  oilType String?
+  oilWeight String?
+  reasonForService String?
+  contaminants String?
+  copperClassification CopperClassification @default(UNKNOWN)
+  accessoriesReceived String?
+  customerContactName String?
+  customerContactPhone String?
+  customerContactEmail String?
   serviceStageId String @db.Uuid
   condition WorkOrderCondition @default(NORMAL)
   customerFacingStatus CustomerFacingStatus
   createdById String @db.Uuid
+  legacySource String?
+  legacyId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
   location Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
   equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  serviceCenter ServiceCenter? @relation(fields: [serviceCenterId], references: [id], onDelete: Restrict)
   serviceStage ServiceStage @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)
   createdBy User @relation("WorkOrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
   statusHistory WorkOrderStatusHistory[]
@@ -242,6 +333,8 @@ model WorkOrder {
   notifications Notification[]
   auditEvents AuditEvent[]
   @@unique([companyId, workOrderNumber])
+  @@unique([legacySource, legacyId])
+  @@index([serviceCenterId])
   @@index([companyId, customerFacingStatus])
   @@index([equipmentId, updatedAt])
   @@index([serviceStageId])
@@ -308,12 +401,16 @@ model Attachment {
   mimeType String
   sizeBytes Int
   checksum String?
+  caption String?
   uploadedById String @db.Uuid
   uploadedAt DateTime @default(now())
+  legacySource String?
+  legacyId String?
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   equipment Equipment? @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
   serviceStage ServiceStage? @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)
   uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  @@unique([legacySource, legacyId])
   @@index([workOrderId, kind, visibility, photoCategory])
   @@index([equipmentId])
 }
