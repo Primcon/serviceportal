@@ -6,6 +6,21 @@ import { prisma } from "@/lib/prisma";
 const maximumDeliveryAttempts = 5;
 /** How long a dispatcher owns a notification it claimed. After this, another run may retry it. */
 const claimLeaseMilliseconds = 10 * 60 * 1000;
+/** Emails still unsent after this long are out of date, so they're expired instead of sent. */
+const notificationMaximumAgeMilliseconds = 48 * 60 * 60 * 1000;
+export const expiredNotificationError = "Expired: not sent because it was still queued 48 hours after it was created.";
+
+/**
+ * Marks pending emails that are too old to be useful as failed, so a backlog (after an outage,
+ * or before the dispatcher first ran) doesn't reach customers as a burst of stale messages.
+ */
+export async function expireStaleNotifications(now = new Date()) {
+  const expired = await prisma.notification.updateMany({
+    where: { status: NotificationStatus.PENDING, createdAt: { lt: new Date(now.getTime() - notificationMaximumAgeMilliseconds) } },
+    data: { status: NotificationStatus.FAILED, lastError: expiredNotificationError },
+  });
+  return expired.count;
+}
 
 export function emailConfiguration() {
   const connectionString = process.env.AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING;
@@ -121,7 +136,8 @@ export async function claimNotification(notification: { id: string; nextAttemptA
 
 export async function dispatchPendingNotifications(limit = 25) {
   const configuration = emailConfiguration();
-  if (!configuration) return { processed: 0, delivered: 0, failed: 0 };
+  if (!configuration) return { processed: 0, delivered: 0, failed: 0, expired: 0 };
+  const expired = await expireStaleNotifications();
   const notifications = await prisma.notification.findMany({
     where: {
       status: NotificationStatus.PENDING,
@@ -162,5 +178,5 @@ export async function dispatchPendingNotifications(limit = 25) {
       failed += 1;
     }
   }
-  return { processed: notifications.length, delivered, failed };
+  return { processed: notifications.length, delivered, failed, expired };
 }

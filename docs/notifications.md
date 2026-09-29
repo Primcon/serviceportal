@@ -19,6 +19,8 @@ Set the following values through the production secret store:
 
 With the ACS connection string and sender address configured, new notification records begin in `PENDING` state. The dispatcher moves records to `SENT` after ACS accepts delivery, retries failed attempts with exponential backoff, and marks a record `FAILED` after five attempts.
 
+Emails still queued 48 hours after they were created are out of date, so each dispatcher run marks them `FAILED` with an "Expired" error instead of sending them. This keeps a backlog, after an outage or from before the dispatcher first ran, from reaching customers as a burst of stale messages.
+
 Before sending, the dispatcher claims each notification by moving its next attempt time forward ten minutes. Only one run can win the claim, so overlapping dispatcher runs never send the same email twice. If a run stops after claiming, the notification is retried once the ten minutes pass.
 
 ## Azure Container Apps Job

@@ -2,7 +2,7 @@ import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaClient, UserRole } from "@prisma/client";
 import { updateWorkOrderStatus } from "@/features/work-orders/actions";
-import { claimNotification, statusChangeNotification } from "@/services/notifications";
+import { claimNotification, expiredNotificationError, expireStaleNotifications, statusChangeNotification } from "@/services/notifications";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -87,6 +87,18 @@ describe("customer status notifications", () => {
     await expect(updateWorkOrderStatus(statusForm(inspection.id))).resolves.toEqual({ status: "success" });
     const notifications = await prisma.notification.findMany({ where: { workOrderId }, select: { subject: true, recipientEmail: true } });
     expect(notifications).toEqual([{ subject: `Repair NOTIFY-${suffix}: In progress`, recipientEmail: `notification-customer-${suffix}@test.invalid` }]);
+  });
+
+  it("expires queued emails older than 48 hours instead of sending them", async () => {
+    const queued = (label: string, createdAt: Date) => prisma.notification.create({
+      data: { workOrderId, recipientEmail: `${label}-${suffix}@test.invalid`, eventKey: `expiry-test:${label}:${suffix}`, subject: label, body: label, status: "PENDING", createdAt },
+    });
+    const stale = await queued("stale", new Date(Date.now() - 3 * 24 * 60 * 60 * 1000));
+    const fresh = await queued("fresh", new Date(Date.now() - 60 * 60 * 1000));
+
+    expect(await expireStaleNotifications()).toBeGreaterThanOrEqual(1);
+    expect(await prisma.notification.findUniqueOrThrow({ where: { id: stale.id } })).toMatchObject({ status: "FAILED", lastError: expiredNotificationError });
+    expect((await prisma.notification.findUniqueOrThrow({ where: { id: fresh.id } })).status).toBe("PENDING");
   });
 
   it("lets only one dispatcher claim a pending notification", async () => {
