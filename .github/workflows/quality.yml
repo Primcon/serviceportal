@@ -1,0 +1,46 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: vactech_service_portal
+          POSTGRES_USER: vactech
+          POSTGRES_PASSWORD: vactech-dev-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vactech -d vactech_service_portal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://vactech:vactech-dev-password@localhost:5432/vactech_service_portal?schema=public
+      POSTGRES_DB: vactech_service_portal
+      POSTGRES_USER: vactech
+      POSTGRES_PASSWORD: vactech-dev-password
+      AUTH_MODE: development
+      DEVELOPMENT_INTERNAL_ROLE: VACTECH_MANAGER
+      AUTH_SESSION_SECRET: test-session-secret-that-is-at-least-32-characters
+      APP_ORIGIN: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - run: npx prisma migrate deploy
+      - run: npm run lint
+      - run: npm run test:run
+      - run: npm run build
+      - run: docker build -t vactech-service-portal:ci .

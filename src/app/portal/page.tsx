@@ -1,0 +1,30 @@
+import Link from "next/link";
+import { ArrowUpRight, ClipboardList, Search } from "lucide-react";
+import { CustomerFacingStatus } from "@prisma/client";
+import { listCustomerWorkOrders } from "@/features/work-orders/customer-queries";
+import { getRequestActor } from "@/services/request-actor";
+
+export const dynamic = "force-dynamic";
+
+type SearchParams = Record<string, string | string[] | undefined>;
+
+const statusLabels = { OPEN: "Open", IN_PROGRESS: "In progress", WAITING: "Waiting", COMPLETED: "Completed" } as const;
+
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function CustomerPortalPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const params = await searchParams;
+  const search = firstParam(params.search)?.trim() ?? "";
+  const status = firstParam(params.status) ?? "";
+  const customerStatus = Object.values(CustomerFacingStatus).includes(status as CustomerFacingStatus) ? status as CustomerFacingStatus : undefined;
+  const actor = await getRequestActor("customer");
+  const workOrders = actor ? await listCustomerWorkOrders(actor.identitySubject, { search, status }) : [];
+  const allWorkOrders = actor ? await listCustomerWorkOrders(actor.identitySubject) : [];
+  const counts = new Map(Object.values(CustomerFacingStatus).map((item) => [item, allWorkOrders.filter((workOrder) => workOrder.customerFacingStatus === item).length]));
+  const filtersApplied = Boolean(search || customerStatus);
+  const filterKey = `${search}:${customerStatus ?? ""}`;
+
+  return <main className="min-h-screen bg-[#ffffff] px-5 py-10 text-[#000000] sm:px-10"><div className="mx-auto max-w-5xl"><div className="border-b border-[#d9d9d9] pb-7"><p className="text-sm font-bold tracking-[0.1em] text-[#ea3435]">MY REPAIRS</p><h1 className="mt-2 text-4xl font-bold">Service in motion</h1><p className="mt-3 max-w-2xl text-[#5a5a5a]">Follow your equipment repairs, review the latest service updates, and open each repair record when you need more detail.</p></div><section aria-label="Repair status summary" className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Object.values(CustomerFacingStatus).map((item) => <Link className="border-l-4 border-[#d9d9d9] bg-[#f6f6f6] p-5 hover:border-[#ea3435]" href={`/portal?status=${item}`} key={item}><p className="text-3xl font-bold">{counts.get(item) ?? 0}</p><p className="mt-1 text-sm font-bold">{statusLabels[item]}</p><p className="mt-1 text-xs text-[#5a5a5a]">service record{(counts.get(item) ?? 0) === 1 ? "" : "s"}</p></Link>)}</section><section aria-label="Repair filters" className="mt-8 border border-[#d9d9d9] bg-white p-5"><div className="flex items-center gap-2 text-sm font-bold text-[#333333]"><Search className="text-[#ea3435]" size={17} /> Find a repair</div><form key={filterKey} method="get" className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_auto]"><label className="sr-only" htmlFor="portal-search">Search repairs</label><div className="relative"><Search className="absolute left-3 top-3 text-[#5a5a5a]" size={17} /><input className="w-full border border-[#d9d9d9] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#ea3435]" defaultValue={search} id="portal-search" name="search" placeholder="Repair number, model, or serial" /></div><label className="sr-only" htmlFor="portal-status">Customer status</label><select className="border border-[#d9d9d9] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#ea3435]" defaultValue={customerStatus ?? ""} id="portal-status" name="status"><option value="">All statuses</option>{Object.values(CustomerFacingStatus).map((item) => <option key={item} value={item}>{statusLabels[item]}</option>)}</select><div className="flex gap-2"><button className="flex-1 bg-[#ea3435] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#c72028]">Apply</button>{filtersApplied && <Link className="border border-[#ea3435] px-3 py-2.5 text-sm font-bold text-[#ea3435]" href="/portal">Reset</Link>}</div></form></section><section className="mt-6"><div className="flex items-end justify-between gap-3 border-b border-[#d9d9d9] pb-4"><div><h2 className="text-xl font-bold">Your service records</h2><p className="mt-1 text-sm text-[#5a5a5a]">Customer-visible repair status and updates.</p></div><p className="text-sm font-bold text-[#5a5a5a]">{workOrders.length} result{workOrders.length === 1 ? "" : "s"}</p></div>{workOrders.length ? <div className="mt-5 border-y border-[#d9d9d9]">{workOrders.map((workOrder) => <Link className="group grid gap-4 border-b border-[#d9d9d9] bg-white px-5 py-5 last:border-b-0 hover:bg-[#f6f6f6] sm:grid-cols-[minmax(0,1fr)_auto]" href={`/portal/work-orders/${workOrder.id}`} key={workOrder.id}><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-bold text-[#ea3435]">{workOrder.workOrderNumber}</p><span className="bg-[#fde5e5] px-2 py-0.5 text-xs font-bold text-[#b42318]">{statusLabels[workOrder.customerFacingStatus]}</span></div><h3 className="mt-2 text-lg font-bold group-hover:text-[#ea3435]">{workOrder.summary}</h3><p className="mt-2 text-sm text-[#5a5a5a]">{workOrder.equipment.productModel} · Serial {workOrder.equipment.serialNumber}</p>{workOrder.updates[0] && <p className="mt-3 border-l-2 border-[#fde5e5] pl-3 text-sm text-[#333333]"><span className="font-bold">Latest update: </span>{workOrder.updates[0].title}</p>}</div><ArrowUpRight className="mt-1 text-[#ea3435]" size={20} /></Link>)}</div> : <div className="mt-5 border border-dashed border-[#d9d9d9] bg-white px-5 py-14 text-center"><ClipboardList className="mx-auto text-[#5a5a5a]" size={28} /><p className="mt-4 font-bold">{filtersApplied ? "No repairs match these filters." : "No repairs are available yet."}</p><p className="mt-1 text-sm text-[#5a5a5a]">{filtersApplied ? "Change or clear the filters to broaden your results." : "Your service team will add updates here as work progresses."}</p></div>}</section></div></main>;
+}

@@ -1,0 +1,24 @@
+"use client";
+
+import { useId, useState } from "react";
+import { CheckCircle2, Edit3, PauseCircle, X } from "lucide-react";
+import ActionFeedbackForm from "@/components/action-feedback-form";
+import { updateServiceStage } from "@/features/admin/actions";
+
+type Stage = {
+  id: string;
+  code: string;
+  displayName: string;
+  sequence: number;
+  customerFacingStatus: "OPEN" | "IN_PROGRESS" | "WAITING" | "COMPLETED";
+  isActive: boolean;
+};
+
+const statusLabels = { OPEN: "Open", IN_PROGRESS: "In progress", WAITING: "Waiting", COMPLETED: "Completed" } as const;
+
+export default function WorkflowStageList({ stages }: { stages: Stage[] }) {
+  const dialogId = useId();
+  const [selectedStage, setSelectedStage] = useState<Stage | null>(null);
+
+  return <><div className="border-y border-[#d9d9d9] bg-white">{stages.map((stage) => <article className="grid gap-4 border-b border-[#d9d9d9] px-5 py-5 last:border-b-0 sm:grid-cols-[72px_minmax(0,1fr)_auto_auto] sm:items-center" key={stage.id}><div className="flex size-10 items-center justify-center border border-[#d9d9d9] text-sm font-bold text-[#5a5a5a]">{stage.sequence}</div><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{stage.displayName}</h3><span className={stage.isActive ? "bg-[#fde5e5] px-2 py-0.5 text-xs font-bold text-[#b42318]" : "bg-[#f6f6f6] px-2 py-0.5 text-xs font-bold text-[#5a5a5a]"}>{stage.isActive ? "Active" : "Inactive"}</span></div><p className="mt-1 text-sm text-[#5a5a5a]">{stage.code}</p></div><div className="flex items-center gap-2 text-sm"><span className="text-[#5a5a5a]">Customer sees</span><span className="font-bold">{statusLabels[stage.customerFacingStatus]}</span></div><button className="flex items-center justify-center gap-2 border border-[#000000] px-3 py-2 text-sm font-bold text-[#000000] hover:border-[#ea3435] hover:text-[#ea3435]" onClick={() => setSelectedStage(stage)} type="button"><Edit3 size={16} /> Edit</button></article>)}</div>{selectedStage && <div className="fixed inset-0 z-30 grid place-items-center bg-black/50 p-5" onMouseDown={() => setSelectedStage(null)} role="presentation"><section aria-labelledby={`${dialogId}-title`} aria-modal="true" className="w-full max-w-lg border border-[#d9d9d9] bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()} role="dialog"><div className="flex items-start justify-between gap-5 border-b border-[#d9d9d9] pb-5"><div><p className="text-sm font-bold tracking-[0.1em] text-[#ea3435]">WORKFLOW STAGE</p><h2 className="mt-2 text-2xl font-bold" id={`${dialogId}-title`}>{selectedStage.displayName}</h2><p className="mt-2 text-sm text-[#5a5a5a]">Sequence {selectedStage.sequence} · {selectedStage.code}</p></div><button aria-label="Close stage editor" className="grid size-10 shrink-0 place-items-center border border-[#d9d9d9] text-[#5a5a5a] hover:border-[#ea3435] hover:text-[#ea3435]" onClick={() => setSelectedStage(null)} type="button"><X size={20} /></button></div><ActionFeedbackForm action={updateServiceStage} className="mt-6 grid gap-4" successMessage="Workflow stage updated."><input name="serviceStageId" type="hidden" value={selectedStage.id} /><label className="grid gap-1.5 text-sm font-bold" htmlFor={`${dialogId}-status`}>Customer-facing status<select className="border border-[#d9d9d9] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#ea3435]" defaultValue={selectedStage.customerFacingStatus} id={`${dialogId}-status`} name="customerFacingStatus">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="grid gap-1.5 text-sm font-bold" htmlFor={`${dialogId}-availability`}>Availability<select className="border border-[#d9d9d9] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#ea3435]" defaultValue={String(selectedStage.isActive)} id={`${dialogId}-availability`} name="isActive"><option value="true">Active and selectable</option><option value="false">Inactive</option></select></label><div className="border-l-4 border-[#d9d9d9] bg-[#f6f6f6] px-4 py-3 text-sm text-[#5a5a5a]"><div className="flex items-start gap-2">{selectedStage.isActive ? <CheckCircle2 className="mt-0.5 shrink-0 text-[#ea3435]" size={18} /> : <PauseCircle className="mt-0.5 shrink-0 text-[#ea3435]" size={18} />}<p>Inactive stages remain visible in work-order history but cannot be selected for a new service-state update.</p></div></div><div className="flex justify-end"><button className="flex items-center gap-2 bg-[#ea3435] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#c72028]"><Edit3 size={16} /> Save stage</button></div></ActionFeedbackForm></section></div>}</>;
+}

@@ -1,0 +1,28 @@
+import Link from "next/link";
+import { CustomerFacingStatus } from "@prisma/client";
+import { ArrowUpRight, Building2, ClipboardList, Inbox, Package, UsersRound } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { getActiveInternalUser } from "@/services/authorization";
+
+export const dynamic = "force-dynamic";
+
+const statusLabels: Record<CustomerFacingStatus, string> = {
+  OPEN: "Open",
+  IN_PROGRESS: "In progress",
+  WAITING: "Waiting",
+  COMPLETED: "Completed",
+};
+
+export default async function WorkspacePage() {
+  await getActiveInternalUser();
+  const [workOrderCounts, equipmentCount, customerCount, pendingAccessRequests, recentWorkOrders] = await Promise.all([
+    prisma.workOrder.groupBy({ by: ["customerFacingStatus"], _count: { _all: true } }),
+    prisma.equipment.count(),
+    prisma.company.count(),
+    prisma.accessRequest.count({ where: { status: "PENDING" } }),
+    prisma.workOrder.findMany({ orderBy: { updatedAt: "desc" }, take: 6, select: { id: true, workOrderNumber: true, summary: true, customerFacingStatus: true, company: { select: { name: true } }, equipment: { select: { productModel: true, serialNumber: true } }, serviceStage: { select: { displayName: true } } } }),
+  ]);
+  const counts = new Map(workOrderCounts.map((item) => [item.customerFacingStatus, item._count._all]));
+
+  return <main className="min-h-screen bg-[#f6f6f6] text-[#000000]"><div className="mx-auto max-w-7xl px-5 py-8 sm:px-8"><div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#d9d9d9] pb-7"><div><p className="text-sm font-bold tracking-[0.1em] text-[#ea3435]">SERVICE OPERATIONS</p><h1 className="mt-2 text-3xl font-bold">Today&apos;s service work</h1><p className="mt-2 max-w-2xl text-[#5a5a5a]">Review the active repair queue, then move into the customer, equipment, and work-order records that need attention.</p></div><Link className="flex items-center gap-2 bg-[#ea3435] px-3 py-2.5 text-sm font-bold text-white" href="/workspace/work-orders/new"><ClipboardList size={16} /> New work order</Link></div><section aria-label="Operational summary" className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.values(CustomerFacingStatus).map((status) => <Link className="border border-[#d9d9d9] bg-[#ffffff] p-5 hover:border-[#ea3435]" href={`/workspace/work-orders?status=${status}`} key={status}><p className="text-sm font-bold text-[#5a5a5a]">{statusLabels[status]}</p><p className="mt-2 text-3xl font-bold text-[#ea3435]">{counts.get(status) ?? 0}</p><p className="mt-1 text-sm text-[#5a5a5a]">work orders</p></Link>)}</section><section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.8fr)]"><div className="border-y border-[#d9d9d9] bg-[#ffffff]"><div className="flex items-center justify-between gap-4 border-b border-[#d9d9d9] px-5 py-4"><div><h2 className="font-bold">Recently updated</h2><p className="mt-1 text-sm text-[#5a5a5a]">The latest activity across the service queue.</p></div><Link className="text-sm font-bold text-[#ea3435]" href="/workspace/work-orders">All work orders</Link></div>{recentWorkOrders.length ? recentWorkOrders.map((workOrder) => <Link className="group grid gap-3 border-b border-[#d9d9d9] px-5 py-4 last:border-b-0 hover:bg-[#f6f6f6] sm:grid-cols-[minmax(0,1fr)_auto]" href={`/workspace/work-orders/${workOrder.id}`} key={workOrder.id}><div><p className="text-sm font-bold text-[#ea3435]">{workOrder.workOrderNumber}</p><h3 className="mt-1 font-bold group-hover:text-[#ea3435]">{workOrder.summary}</h3><p className="mt-1 text-sm text-[#5a5a5a]">{workOrder.company.name} · {workOrder.equipment.productModel} · {workOrder.equipment.serialNumber}</p></div><div className="flex items-start gap-2 text-sm"><div className="text-right"><p className="font-bold">{workOrder.serviceStage.displayName}</p><p className="mt-1 text-[#5a5a5a]">{statusLabels[workOrder.customerFacingStatus]}</p></div><ArrowUpRight className="text-[#ea3435]" size={18} /></div></Link>) : <p className="px-5 py-12 text-center text-sm text-[#5a5a5a]">New work orders will appear here as service begins.</p>}</div><aside className="grid content-start gap-3"><Link className="border border-[#d9d9d9] bg-[#ffffff] p-5 hover:border-[#ea3435]" href="/workspace/customers"><Building2 className="text-[#ea3435]" size={20} /><p className="mt-4 font-bold">Customers and locations</p><p className="mt-1 text-sm text-[#5a5a5a]">{customerCount} customer{customerCount === 1 ? "" : "s"} in the service directory.</p></Link><Link className="border border-[#d9d9d9] bg-[#ffffff] p-5 hover:border-[#ea3435]" href="/workspace/equipment"><Package className="text-[#ea3435]" size={20} /><p className="mt-4 font-bold">Equipment</p><p className="mt-1 text-sm text-[#5a5a5a]">{equipmentCount} asset{equipmentCount === 1 ? "" : "s"} with retained service history.</p></Link><Link className="border border-[#d9d9d9] bg-[#ffffff] p-5 hover:border-[#ea3435]" href="/workspace/access-requests"><Inbox className="text-[#b42318]" size={20} /><p className="mt-4 font-bold">Access requests</p><p className="mt-1 text-sm text-[#5a5a5a]">{pendingAccessRequests} request{pendingAccessRequests === 1 ? "" : "s"} awaiting review.</p></Link><Link className="border border-[#d9d9d9] bg-[#ffffff] p-5 hover:border-[#ea3435]" href="/workspace/users"><UsersRound className="text-[#ea3435]" size={20} /><p className="mt-4 font-bold">Users and access</p><p className="mt-1 text-sm text-[#5a5a5a]">Manage account status, roles, and customer grants.</p></Link></aside></section></div></main>;
+}

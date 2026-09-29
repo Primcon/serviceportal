@@ -1,0 +1,397 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PORTAL_ADMINISTRATOR
+  VACTECH_MANAGER
+  VACTECH_SERVICE_USER
+  CUSTOMER_USER
+}
+
+enum AccessScope {
+  COMPANY
+  LOCATION
+}
+
+enum CustomerFacingStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  COMPLETED
+}
+
+enum WorkOrderCondition {
+  NORMAL
+  WAITING_ON_PARTS
+  AWAITING_CUSTOMER
+  CUSTOMER_HOLD
+  WARRANTY_REVIEW
+  QUOTE_DECLINED
+  CANCELLED
+}
+
+enum RecordVisibility {
+  INTERNAL_ONLY
+  CUSTOMER_VISIBLE
+}
+
+enum AttachmentKind {
+  PHOTO
+  DOCUMENT
+}
+
+enum PhotoCategory {
+  ARRIVAL
+  IDENTIFICATION
+  INITIAL_CONDITION
+  INSPECTION
+  DISASSEMBLY
+  FINDINGS
+  REPAIR
+  REPLACEMENT_PARTS
+  TESTING
+  FINAL_CONDITION
+  SHIPPING
+}
+
+enum DocumentType {
+  CUSTOMER_PO
+  REPAIR_QUOTE
+  INSPECTION_REPORT
+  TEST_REPORT
+  FINAL_SERVICE_REPORT
+  SHIPPING_DOCUMENTATION
+  OTHER
+}
+
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  LOGGED
+}
+
+enum ReportType {
+  WORK_ORDERS
+  EQUIPMENT
+  AUDIT_EVENTS
+}
+
+enum ReportFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum ReportRunStatus {
+  SUCCESS
+  FAILED
+}
+
+model Company {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  locations Location[]
+  equipment Equipment[]
+  workOrders WorkOrder[]
+  userAccess UserAccess[]
+  accessRequests AccessRequest[]
+  @@index([name])
+}
+
+model Location {
+  id String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  name String
+  addressLine String?
+  city String?
+  region String?
+  postalCode String?
+  country String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  equipment Equipment[]
+  workOrders WorkOrder[]
+  userAccess UserAccess[]
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  identitySubject String @unique
+  email String @unique
+  firstName String?
+  lastName String?
+  displayName String
+  isActive Boolean @default(true)
+  internalRole UserRole?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  access UserAccess[]
+  createdWork WorkOrder[] @relation("WorkOrderCreator")
+  updates ServiceUpdate[]
+  findings Finding[]
+  attachments Attachment[]
+  statusChanges WorkOrderStatusHistory[]
+  auditEvents AuditEvent[]
+  reviewedRequests AccessRequest[] @relation("AccessRequestReviewer")
+  notificationPreference NotificationPreference?
+  reportSchedules ReportSchedule[] @relation("ReportScheduleCreator")
+}
+
+model NotificationPreference {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+  emailUpdates Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserAccess {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  companyId String @db.Uuid
+  locationId String? @db.Uuid
+  role UserRole
+  scope AccessScope @default(COMPANY)
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  @@unique([userId, companyId, locationId])
+  @@index([companyId])
+  @@index([locationId])
+}
+
+model Equipment {
+  id String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  locationId String? @db.Uuid
+  productModel String
+  serialNumber String
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  workOrders WorkOrder[]
+  attachments Attachment[]
+  @@index([companyId, serialNumber])
+  @@index([locationId])
+}
+
+model ServiceStage {
+  id String @id @default(uuid()) @db.Uuid
+  code String @unique
+  displayName String
+  sequence Int @unique
+  customerFacingStatus CustomerFacingStatus
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workOrders WorkOrder[]
+  statusHistory WorkOrderStatusHistory[]
+  attachments Attachment[]
+}
+
+model WorkOrder {
+  id String @id @default(uuid()) @db.Uuid
+  workOrderNumber String
+  companyId String @db.Uuid
+  locationId String? @db.Uuid
+  equipmentId String @db.Uuid
+  summary String
+  serviceType String?
+  priority String?
+  customerPurchaseOrder String?
+  rmaReference String?
+  receivedAt DateTime?
+  completedAt DateTime?
+  serviceStageId String @db.Uuid
+  condition WorkOrderCondition @default(NORMAL)
+  customerFacingStatus CustomerFacingStatus
+  createdById String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  serviceStage ServiceStage @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)
+  createdBy User @relation("WorkOrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  statusHistory WorkOrderStatusHistory[]
+  updates ServiceUpdate[]
+  findings Finding[]
+  attachments Attachment[]
+  notifications Notification[]
+  auditEvents AuditEvent[]
+  @@unique([companyId, workOrderNumber])
+  @@index([companyId, customerFacingStatus])
+  @@index([equipmentId, updatedAt])
+  @@index([serviceStageId])
+  @@index([locationId])
+}
+
+model WorkOrderStatusHistory {
+  id String @id @default(uuid()) @db.Uuid
+  workOrderId String @db.Uuid
+  serviceStageId String @db.Uuid
+  condition WorkOrderCondition
+  changedById String @db.Uuid
+  note String?
+  createdAt DateTime @default(now())
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  serviceStage ServiceStage @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)
+  changedBy User @relation(fields: [changedById], references: [id], onDelete: Restrict)
+  @@index([workOrderId, createdAt])
+}
+
+model ServiceUpdate {
+  id String @id @default(uuid()) @db.Uuid
+  workOrderId String @db.Uuid
+  title String
+  body String
+  visibility RecordVisibility @default(INTERNAL_ONLY)
+  notifyCustomer Boolean @default(false)
+  createdById String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  notifications Notification[]
+  @@index([workOrderId, visibility, createdAt])
+}
+
+model Finding {
+  id String @id @default(uuid()) @db.Uuid
+  workOrderId String @db.Uuid
+  title String
+  body String
+  visibility RecordVisibility @default(INTERNAL_ONLY)
+  createdById String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  @@index([workOrderId, visibility, createdAt])
+}
+
+model Attachment {
+  id String @id @default(uuid()) @db.Uuid
+  workOrderId String @db.Uuid
+  equipmentId String? @db.Uuid
+  serviceStageId String? @db.Uuid
+  kind AttachmentKind
+  visibility RecordVisibility @default(INTERNAL_ONLY)
+  photoCategory PhotoCategory?
+  documentType DocumentType?
+  originalStorageKey String
+  optimizedStorageKey String?
+  thumbnailStorageKey String?
+  fileName String
+  mimeType String
+  sizeBytes Int
+  checksum String?
+  uploadedById String @db.Uuid
+  uploadedAt DateTime @default(now())
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  equipment Equipment? @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  serviceStage ServiceStage? @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  @@index([workOrderId, kind, visibility, photoCategory])
+  @@index([equipmentId])
+}
+
+model AccessRequest {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  firstName String?
+  lastName String?
+  email String
+  requestedCompany String
+  message String?
+  status AccessRequestStatus @default(PENDING)
+  assignedCompanyId String? @db.Uuid
+  reviewedById String? @db.Uuid
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  assignedCompany Company? @relation(fields: [assignedCompanyId], references: [id], onDelete: SetNull)
+  reviewedBy User? @relation("AccessRequestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  @@index([status, createdAt])
+  @@index([email])
+}
+
+model Notification {
+  id String @id @default(uuid()) @db.Uuid
+  workOrderId String @db.Uuid
+  serviceUpdateId String? @db.Uuid
+  recipientEmail String
+  eventKey String
+  subject String
+  body String
+  status NotificationStatus @default(PENDING)
+  attemptCount Int @default(0)
+  lastError String?
+  nextAttemptAt DateTime @default(now())
+  providerMessageId String?
+  createdAt DateTime @default(now())
+  sentAt DateTime?
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  serviceUpdate ServiceUpdate? @relation(fields: [serviceUpdateId], references: [id], onDelete: SetNull)
+  @@unique([eventKey, recipientEmail])
+  @@index([workOrderId, createdAt])
+  @@index([status, nextAttemptAt])
+}
+
+model ReportSchedule {
+  id String @id @default(uuid()) @db.Uuid
+  reportType ReportType
+  filters Json?
+  recipientEmails String[]
+  frequency ReportFrequency
+  startAt DateTime
+  timeZone String
+  nextRunAt DateTime
+  isActive Boolean @default(true)
+  createdById String @db.Uuid
+  lastRunAt DateTime?
+  lastRunStatus ReportRunStatus?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy User @relation("ReportScheduleCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  @@index([isActive, nextRunAt])
+  @@index([createdById])
+}
+
+model AuditEvent {
+  id String @id @default(uuid()) @db.Uuid
+  workOrderId String? @db.Uuid
+  actorUserId String? @db.Uuid
+  eventType String
+  entityType String
+  entityId String?
+  customerVisible Boolean @default(false)
+  metadata Json?
+  createdAt DateTime @default(now())
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  @@index([workOrderId, createdAt])
+  @@index([entityType, entityId])
+}

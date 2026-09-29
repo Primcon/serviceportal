@@ -1,0 +1,122 @@
+name: vactech-service-portal
+location: East US
+identity:
+  type: SystemAssigned
+properties:
+  managedEnvironmentId: /subscriptions/40e90bbd-cd22-4ede-8702-8b8027ced023/resourceGroups/vactech-service-portal-rg/providers/Microsoft.App/managedEnvironments/vactech-service-env
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 3000
+      transport: Auto
+      allowInsecure: false
+      traffic:
+        - latestRevision: true
+          weight: 100
+    registries:
+      - server: vactechportalacr.azurecr.io
+        identity: system
+    secrets:
+      - name: auth-session
+        keyVaultUrl: https://vactech-service-kv.vault.azure.net/secrets/auth-session-secret
+        identity: system
+      - name: database-url
+        keyVaultUrl: https://vactech-service-kv.vault.azure.net/secrets/database-url
+        identity: system
+      - name: entra-customer
+        keyVaultUrl: https://vactech-service-kv.vault.azure.net/secrets/entra-customer-client-secret
+        identity: system
+      - name: entra-employee
+        keyVaultUrl: https://vactech-service-kv.vault.azure.net/secrets/entra-employee-client-secret
+        identity: system
+      - name: worker-secret
+        keyVaultUrl: https://vactech-service-kv.vault.azure.net/secrets/notification-worker-secret
+        identity: system
+      - name: report-worker-secret
+        keyVaultUrl: https://vactech-service-kv.vault.azure.net/secrets/report-worker-secret
+        identity: system
+      - name: acs-connection
+        keyVaultUrl: https://vactech-service-kv.vault.azure.net/secrets/azure-communication-services-connection-string
+        identity: system
+  template:
+    containers:
+      - name: vactech-service-portal
+        image: vactechportalacr.azurecr.io/vactech-service-portal@sha256:d19d7dc31adf7f17c9b8e660fd8cfe6329ef478196a26f04f016b7f62d7574e0
+        env:
+          - name: AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING
+            secretRef: acs-connection
+          - name: ENTRA_CUSTOMER_CLIENT_SECRET
+            secretRef: entra-customer
+          - name: ENTRA_EMPLOYEE_CLIENT_SECRET
+            secretRef: entra-employee
+          - name: AUTH_SESSION_SECRET
+            secretRef: auth-session
+          - name: NOTIFICATION_WORKER_SECRET
+            secretRef: worker-secret
+          - name: REPORT_WORKER_SECRET
+            secretRef: report-worker-secret
+          - name: DATABASE_URL
+            secretRef: database-url
+          - name: AUTH_MODE
+            value: entra
+          - name: ENTRA_CUSTOMER_TENANT_ID
+            value: f8f990b9-84fb-42f3-bcc6-4026a6da8cbc
+          - name: ENTRA_CUSTOMER_CLIENT_ID
+            value: 39667463-1a2d-40ab-b7d7-a4a9982c3313
+          - name: ENTRA_CUSTOMER_AUTHORITY
+            value: https://vactechserviceportal.ciamlogin.com/
+          - name: ENTRA_CUSTOMER_REDIRECT_URI
+            value: https://vactech-service-portal.ambitiouspebble-d8281bb3.eastus.azurecontainerapps.io/api/auth/customer/callback
+          - name: ENTRA_EMPLOYEE_TENANT_ID
+            value: c82ada45-58df-465c-a47a-84b1c4cbcbec
+          - name: ENTRA_EMPLOYEE_CLIENT_ID
+            value: 4a5fbbba-85fa-474c-a904-9dda68f86b34
+          - name: ENTRA_EMPLOYEE_AUTHORITY
+            value: https://login.microsoftonline.com/c82ada45-58df-465c-a47a-84b1c4cbcbec
+          - name: ENTRA_EMPLOYEE_REDIRECT_URI
+            value: https://vactech-service-portal.ambitiouspebble-d8281bb3.eastus.azurecontainerapps.io/api/auth/employee/callback
+          - name: AZURE_STORAGE_ACCOUNT_NAME
+            value: vactechservicefiles
+          - name: AZURE_STORAGE_CONTAINER_NAME
+            value: service-attachments
+          - name: AZURE_COMMUNICATION_SERVICES_SENDER_ADDRESS
+            value: DoNotReply@65e97f54-c45c-47a9-a88a-1f623522b713.azurecomm.net
+          - name: APP_ORIGIN
+            value: https://vactech-service-portal.ambitiouspebble-d8281bb3.eastus.azurecontainerapps.io
+        probes:
+          - type: Startup
+            httpGet:
+              path: /api/health/live
+              port: 3000
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            timeoutSeconds: 3
+            failureThreshold: 30
+          - type: Liveness
+            httpGet:
+              path: /api/health/live
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          - type: Readiness
+            httpGet:
+              path: /api/health/ready
+              port: 3000
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 12
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+    scale:
+      minReplicas: 0
+      maxReplicas: 10
+      cooldownPeriod: 300
+      pollingInterval: 30
+      rules:
+        - name: http-scaler
+          http:
+            metadata:
+              concurrentRequests: "10"
