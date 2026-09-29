@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaClient, UserRole } from "@prisma/client";
+import { getCustomerWorkOrder } from "@/features/work-orders/customer-queries";
 import { deletePhoto, postWorkOrderEntry, updatePhoto, updateWorkOrderDetails } from "@/features/work-orders/record-actions";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
 import { deletePrivateFile } from "@/services/private-storage";
@@ -65,6 +66,10 @@ describe("timeline entries", () => {
     expect(findings.map((finding) => [finding.title, finding.visibility])).toEqual([["Scored rotor", "INTERNAL_ONLY"], ["Worn seals", "CUSTOMER_VISIBLE"]]);
     const noteAudit = await prisma.auditEvent.findFirstOrThrow({ where: { entityId: note.id } });
     expect(noteAudit.customerVisible).toBe(false);
+
+    const customerView = await getCustomerWorkOrder(`integration:record-customer:${suffix}`, workOrderId);
+    expect(customerView?.findings.map((finding) => finding.title)).toEqual(["Worn seals"]);
+    expect(customerView?.updates.map((update) => update.body)).not.toContain("Waiting on bearing kit.");
   });
 
   it("requires a title for customer updates and findings", async () => {

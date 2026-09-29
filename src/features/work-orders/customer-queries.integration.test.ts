@@ -130,7 +130,8 @@ describe("customer query authorization", () => {
     expect(workOrder?.attachments[0].fileName).toBe("visible.jpg");
     expect(workOrder?.auditEvents).toHaveLength(1);
     expect(workOrder?.auditEvents[0].eventType).toBe("visible.event");
-    expect(workOrder).not.toHaveProperty("findings");
+    // The fixture's only finding is internal, so customers must not receive it.
+    expect(workOrder?.findings).toEqual([]);
   });
 
   it("logs customer notifications only when an update is explicitly marked for delivery", async () => {

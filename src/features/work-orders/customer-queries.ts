@@ -129,6 +129,11 @@ export async function getCustomerWorkOrder(
         orderBy: { createdAt: "desc" },
         select: { id: true, title: true, body: true, createdAt: true },
       },
+      findings: {
+        where: { visibility: RecordVisibility.CUSTOMER_VISIBLE },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, title: true, body: true, createdAt: true },
+      },
       auditEvents: {
         where: { customerVisible: true },
         orderBy: { createdAt: "desc" },
@@ -145,9 +150,9 @@ export async function getCustomerWorkOrder(
           id: true,
           kind: true,
           fileName: true,
+          caption: true,
           photoCategory: true,
           documentType: true,
-          thumbnailStorageKey: true,
           mimeType: true,
           sizeBytes: true,
           uploadedAt: true,
