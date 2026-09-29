@@ -36,6 +36,10 @@ const documentTypeSchema = z.enum([
   "TEST_REPORT",
   "FINAL_SERVICE_REPORT",
   "SHIPPING_DOCUMENTATION",
+  "INVOICE",
+  "MANUAL",
+  "WARRANTY_CERTIFICATE",
+  "SIGNED_TRAVELER",
   "OTHER",
 ]);
 
@@ -223,59 +227,6 @@ export async function createWorkOrder(formData: FormData): Promise<ActionResult>
   });
 }
 
-export async function createCustomerVisibleUpdate(formData: FormData): Promise<ActionResult> {
-  return runAction(async () => {
-    const input = z
-      .object({
-        workOrderId: requiredText,
-        title: requiredText,
-        body: requiredText,
-        notifyCustomer: z.boolean().default(false),
-      })
-      .parse({
-        workOrderId: value(formData, "workOrderId"),
-        title: value(formData, "title"),
-        body: value(formData, "body"),
-        notifyCustomer: formData.get("notifyCustomer") === "on" || formData.get("notifyCustomer") === "true",
-      });
-    const internalUser = await getActiveInternalUser();
-    const workOrder = await getAuthorizedWorkOrder(input.workOrderId);
-
-    await prisma.$transaction(async (transaction) => {
-      const update = await transaction.serviceUpdate.create({
-        data: {
-          workOrderId: input.workOrderId,
-          title: input.title,
-          body: input.body,
-          visibility: "CUSTOMER_VISIBLE",
-          notifyCustomer: input.notifyCustomer,
-          createdById: internalUser.id,
-        },
-      });
-      await recordAudit(transaction, {
-        workOrderId: input.workOrderId,
-        actorUserId: internalUser.id,
-        eventType: "service-update.posted",
-        entityType: "ServiceUpdate",
-        entityId: update.id,
-        customerVisible: true,
-      });
-      if (input.notifyCustomer) {
-        await logCustomerNotification(transaction, {
-          companyId: workOrder.companyId,
-          workOrderId: input.workOrderId,
-          serviceUpdateId: update.id,
-        });
-      }
-    });
-    revalidatePath(`/workspace/work-orders/${input.workOrderId}`);
-    revalidatePath(`/portal/work-orders/${input.workOrderId}`);
-    revalidatePath("/portal/notifications");
-    revalidatePath("/workspace");
-    revalidatePath("/portal");
-  });
-}
-
 export async function updateWorkOrderStatus(formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
     const input = z
@@ -291,11 +242,13 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
           "QUOTE_DECLINED",
           "CANCELLED",
         ]),
+        note: z.string().trim().max(1000).transform((note) => note || null),
       })
       .parse({
         workOrderId: value(formData, "workOrderId"),
         serviceStageId: value(formData, "serviceStageId"),
         condition: value(formData, "condition"),
+        note: value(formData, "note"),
       });
     const internalUser = await getActiveInternalUser();
     await getAuthorizedWorkOrder(input.workOrderId);
@@ -307,13 +260,13 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
       throw new UserFacingError("Service stage is inactive.");
     }
 
-    await prisma.$transaction(async (transaction) => {
+    const changed = await prisma.$transaction(async (transaction) => {
       const workOrder = await transaction.workOrder.findUniqueOrThrow({
         where: { id: input.workOrderId },
         select: { companyId: true, workOrderNumber: true, serviceStageId: true, condition: true, customerFacingStatus: true, completedAt: true },
       });
       if (workOrder.serviceStageId === stage.id && workOrder.condition === input.condition) {
-        return;
+        return false;
       }
       const isCompleted = stage.code === "COMPLETED";
       await transaction.workOrder.update({
@@ -331,6 +284,7 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
           serviceStageId: stage.id,
           condition: input.condition,
           changedById: internalUser.id,
+          note: input.note,
         },
       });
       await recordAudit(transaction, {
@@ -350,56 +304,33 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
           ...statusChangeNotification({ workOrderId: input.workOrderId, workOrderNumber: workOrder.workOrderNumber, status: stage.customerFacingStatus }),
         });
       }
+      return true;
     });
 
     revalidatePath("/workspace");
     revalidatePath("/portal");
-  });
-}
-
-export async function createInternalFinding(formData: FormData): Promise<ActionResult> {
-  return runAction(async () => {
-    const input = z
-      .object({ workOrderId: requiredText, title: requiredText, body: requiredText })
-      .parse({
-        workOrderId: value(formData, "workOrderId"),
-        title: value(formData, "title"),
-        body: value(formData, "body"),
-      });
-    const internalUser = await getActiveInternalUser();
-    await getAuthorizedWorkOrder(input.workOrderId);
-    await prisma.$transaction(async (transaction) => {
-      const finding = await transaction.finding.create({
-        data: {
-          ...input,
-          createdById: internalUser.id,
-        },
-      });
-      await recordAudit(transaction, {
-        workOrderId: input.workOrderId,
-        actorUserId: internalUser.id,
-        eventType: "finding.created",
-        entityType: "Finding",
-        entityId: finding.id,
-      });
-    });
     revalidatePath(`/workspace/work-orders/${input.workOrderId}`);
-    revalidatePath("/workspace");
+    return changed ? "Service state updated." : "The stage and condition are unchanged. Use a note to add information.";
   });
 }
 
-export async function createCustomerVisiblePhotos(formData: FormData): Promise<ActionResult> {
+export async function uploadWorkOrderPhotos(formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
     const input = z
-      .object({ workOrderId: requiredText, photoCategory: photoCategorySchema })
+      .object({ workOrderId: requiredText, photoCategory: photoCategorySchema, visibility: z.enum(["INTERNAL_ONLY", "CUSTOMER_VISIBLE"]) })
       .parse({
         workOrderId: value(formData, "workOrderId"),
         photoCategory: value(formData, "photoCategory"),
+        visibility: value(formData, "visibility") || "CUSTOMER_VISIBLE",
       });
-    const fileEntries = formData.getAll("files");
-    const files = fileEntries.filter((file): file is File => file instanceof File);
-    if (!files.length || files.length !== fileEntries.length || files.some((file) => file.size === 0)) {
-      throw new UserFacingError("At least one photo is required.");
+    // The form has separate camera and library inputs; the unused one arrives as an empty file.
+    const files = formData.getAll("files").filter((file): file is File => file instanceof File && (file.size > 0 || file.name !== ""));
+    if (!files.length) {
+      throw new UserFacingError("Choose at least one photo.");
+    }
+    const empty = files.find((file) => file.size === 0);
+    if (empty) {
+      throw new UserFacingError(`${safeFileName(empty, "A photo")} is empty.`);
     }
     if (files.length > 20) {
       throw new UserFacingError("Upload up to 20 photos at a time.");
@@ -447,7 +378,7 @@ export async function createCustomerVisiblePhotos(formData: FormData): Promise<A
               equipmentId: workOrder.equipmentId,
               serviceStageId: workOrder.serviceStageId,
               kind: "PHOTO",
-              visibility: "CUSTOMER_VISIBLE",
+              visibility: input.visibility,
               photoCategory: input.photoCategory,
               originalStorageKey: keys.original,
               optimizedStorageKey: keys.optimized,
@@ -464,7 +395,7 @@ export async function createCustomerVisiblePhotos(formData: FormData): Promise<A
             eventType: "photo.uploaded",
             entityType: "Attachment",
             entityId: attachment.id,
-            customerVisible: true,
+            customerVisible: input.visibility === "CUSTOMER_VISIBLE",
             metadata: { photoCategory: input.photoCategory, bulkUpload: true },
           });
         });

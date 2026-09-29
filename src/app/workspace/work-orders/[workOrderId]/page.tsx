@@ -1,143 +1,256 @@
 import Link from "next/link";
-import { WorkOrderCondition } from "@prisma/client";
-import { Activity, ArrowLeft, Camera, ChevronLeft, ChevronRight, ClipboardCheck, FilePlus2, FileText, History, Wrench } from "lucide-react";
 import { notFound } from "next/navigation";
+import { ListKind, UserRole, WorkOrderCondition } from "@prisma/client";
+import { AlertTriangle, ArrowLeft, Camera, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
+import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
+import { Badge } from "@/components/ui/badge";
+import { Field } from "@/components/ui/field";
+import { buttonStyles, fieldStyles, panelStyles } from "@/components/ui/styles";
 import { deleteDocument, updateDocumentVisibility } from "@/features/admin/actions";
-import { createCustomerVisiblePhotos, createInternalDocument, createInternalFinding, updateWorkOrderStatus } from "@/features/work-orders/actions";
-import { getInternalWorkOrder, getInternalWorkOrderActivity, listActiveServiceStages } from "@/features/work-orders/internal-queries";
-import { fieldStyles } from "@/components/ui/styles";
-import { formatEnumLabel } from "@/lib/labels";
+import { createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
+import { DetailsEditor } from "@/features/work-orders/components/details-editor";
+import { PhotoGallery } from "@/features/work-orders/components/photo-gallery";
+import { TimelineComposer } from "@/features/work-orders/components/timeline-composer";
+import { TimelineList } from "@/features/work-orders/components/timeline-list";
+import { getInternalWorkOrder, listActiveServiceStages } from "@/features/work-orders/internal-queries";
+import { buildTimeline } from "@/features/work-orders/timeline";
+import { listOptions, serviceCenters } from "@/features/settings/queries";
+import { copperClassificationLabels, customerStatusLabels, documentTypeLabels, formatEnumLabel } from "@/lib/labels";
+import { firstParam, type SearchParams } from "@/lib/pagination";
+import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Record<string, string | string[] | undefined>;
+const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+const dateTime = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
-const photoCategories = ["ARRIVAL", "IDENTIFICATION", "INITIAL_CONDITION", "INSPECTION", "DISASSEMBLY", "FINDINGS", "REPAIR", "REPLACEMENT_PARTS", "TESTING", "FINAL_CONDITION", "SHIPPING"];
-const documentTypes = ["CUSTOMER_PO", "REPAIR_QUOTE", "INSPECTION_REPORT", "TEST_REPORT", "FINAL_SERVICE_REPORT", "SHIPPING_DOCUMENTATION", "OTHER"];
-
-function firstParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
+function Section({ id, icon, title, actions, children, className = "" }: { id?: string; icon: ReactNode; title: string; actions?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <section className={`${panelStyles} ${className}`} id={id}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-lg font-bold">{icon}{title}</h2>
+        {actions}
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
 }
 
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+function Facts({ items }: { items: [string, ReactNode][] }) {
+  return (
+    <dl className="grid gap-3 text-sm">
+      {items.map(([label, value]) => (
+        <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3" key={label}>
+          <dt className="text-muted">{label}</dt>
+          <dd className="break-words font-bold">{value || <span className="font-normal text-subtle">Not recorded</span>}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
-export default async function InternalWorkOrderPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ workOrderId: string }>;
-  searchParams: Promise<SearchParams>;
-}) {
-  await requireWorkspaceUser();
+export default async function InternalWorkOrderPage({ params, searchParams }: { params: Promise<{ workOrderId: string }>; searchParams: Promise<SearchParams> }) {
+  const viewer = await requireWorkspaceUser();
   const { workOrderId } = await params;
-  const resolvedSearchParams = await searchParams;
-  const requestedActivityPage = Number(firstParam(resolvedSearchParams.activityPage) ?? "1");
-  const activityPage = Number.isFinite(requestedActivityPage) && requestedActivityPage > 0 ? Math.floor(requestedActivityPage) : 1;
-  const [workOrder, serviceStages, activity] = await Promise.all([
-    getInternalWorkOrder(workOrderId),
-    listActiveServiceStages(),
-    getInternalWorkOrderActivity(workOrderId, activityPage),
-  ]);
+  const initialPhotoId = firstParam((await searchParams).photo);
+  const workOrder = await getInternalWorkOrder(workOrderId);
   if (!workOrder) notFound();
-  const photos = workOrder.attachments.filter((attachment) => attachment.kind === "PHOTO");
+
+  const [stages, priorities, serviceTypes, centers, customerPortalUsers] = await Promise.all([
+    listActiveServiceStages(),
+    listOptions(ListKind.PRIORITY),
+    listOptions(ListKind.SERVICE_TYPE),
+    serviceCenters(),
+    prisma.userAccess.count({
+      where: {
+        companyId: workOrder.companyId,
+        role: UserRole.CUSTOMER_USER,
+        user: { isActive: true },
+        OR: [{ scope: "COMPANY" }, ...(workOrder.locationId ? [{ scope: "LOCATION" as const, locationId: workOrder.locationId }] : [])],
+      },
+    }),
+  ]);
+  const isManager = viewer.internalRole === UserRole.PORTAL_ADMINISTRATOR || viewer.internalRole === UserRole.VACTECH_MANAGER;
+  const timeline = buildTimeline({ ...workOrder, attachments: workOrder.attachments });
+  const photos = workOrder.attachments.filter((attachment) => attachment.kind === "PHOTO").map((photo) => ({
+    id: photo.id,
+    fileName: photo.fileName,
+    caption: photo.caption,
+    photoCategory: photo.photoCategory,
+    visibility: photo.visibility,
+    uploadedAt: photo.uploadedAt.toISOString(),
+    uploadedBy: photo.uploadedBy.displayName,
+    canDelete: isManager || photo.uploadedById === viewer.id,
+  }));
   const documents = workOrder.attachments.filter((attachment) => attachment.kind === "DOCUMENT");
-  const activityPageCount = Math.max(1, Math.ceil(activity.total / activity.pageSize));
-  const currentActivityPage = Math.min(activity.page, activityPageCount);
-  const activityHref = (page: number) => `/workspace/work-orders/${workOrder.id}?activityPage=${page}`;
+  const handlingWarning = workOrder.copperClassification !== "UNKNOWN" || workOrder.contaminants;
 
   return (
-    <main className="min-h-screen bg-surface text-ink">
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-        <Link href="/workspace/work-orders" className="flex w-fit items-center gap-2 text-sm font-bold text-brand"><ArrowLeft size={16} /> Work orders</Link>
+    <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
+      <Link className="flex w-fit items-center gap-2 text-sm font-bold text-brand" href="/workspace/work-orders"><ArrowLeft size={16} /> Work orders</Link>
 
-        <section className="mt-6 border-b border-line pb-7">
-          <div className="flex flex-wrap items-start justify-between gap-5">
-            <div>
+      <header className="mt-5 border-b border-line pb-6">
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-bold tracking-[0.1em] text-danger">{workOrder.workOrderNumber}</p>
-              <h1 className="mt-2 text-3xl font-bold">{workOrder.summary}</h1>
-              <p className="mt-2 text-muted">{workOrder.company.name} · {workOrder.equipment.productModel} · Serial {workOrder.equipment.serialNumber}</p>
+              {workOrder.priority && workOrder.priority !== "Standard" && <Badge tone="danger">{workOrder.priority}</Badge>}
+              {workOrder.serviceType && <Badge tone="outline">{workOrder.serviceType}</Badge>}
+              {workOrder.condition !== "NORMAL" && <Badge tone="outline">{formatEnumLabel(workOrder.condition)}</Badge>}
             </div>
+            <h1 className="mt-2 text-3xl font-bold">{workOrder.summary}</h1>
+            <p className="mt-2 text-muted">
+              {workOrder.company.name}{workOrder.location && ` · ${workOrder.location.name}`} · <Link className="font-bold text-ink hover:text-brand" href={`/workspace/equipment/${workOrder.equipment.id}`}>{workOrder.equipment.productModel} · Serial {workOrder.equipment.serialNumber}</Link>
+            </p>
+          </div>
+          <div className="flex flex-col items-start gap-3 sm:items-end">
             <div className="border-l-4 border-brand pl-4 sm:min-w-52">
-              <p className="text-xs font-bold tracking-[0.08em] text-muted">CURRENT SERVICE</p>
+              <p className="text-xs font-bold tracking-[0.08em] text-muted">CURRENT STAGE</p>
               <p className="mt-1 font-bold">{workOrder.serviceStage.displayName}</p>
-              <p className="mt-1 text-sm text-muted">{formatEnumLabel(workOrder.condition)}</p>
+              <p className="mt-0.5 text-sm text-muted">Customer sees: {customerStatusLabels[workOrder.customerFacingStatus]}</p>
             </div>
+            <DetailsEditor
+              details={{
+                id: workOrder.id,
+                summary: workOrder.summary,
+                priority: workOrder.priority,
+                serviceType: workOrder.serviceType,
+                customerPurchaseOrder: workOrder.customerPurchaseOrder,
+                rmaReference: workOrder.rmaReference,
+                promisedAt: workOrder.promisedAt?.toISOString().slice(0, 10) ?? null,
+                serviceCenterId: workOrder.serviceCenterId,
+                toolId: workOrder.toolId,
+                oilType: workOrder.oilType,
+                oilWeight: workOrder.oilWeight,
+                reasonForService: workOrder.reasonForService,
+                contaminants: workOrder.contaminants,
+                copperClassification: workOrder.copperClassification,
+                accessoriesReceived: workOrder.accessoriesReceived,
+                customerContactName: workOrder.customerContactName,
+                customerContactPhone: workOrder.customerContactPhone,
+                customerContactEmail: workOrder.customerContactEmail,
+              }}
+              priorities={priorities}
+              serviceCenters={centers}
+              serviceTypes={serviceTypes}
+            />
           </div>
-        </section>
+        </div>
+        {handlingWarning && (
+          <p className="mt-5 flex items-center gap-2 border-2 border-brand bg-danger-soft px-4 py-2.5 text-sm font-bold text-danger">
+            <AlertTriangle className="shrink-0" size={18} />
+            {[workOrder.copperClassification !== "UNKNOWN" && copperClassificationLabels[workOrder.copperClassification].toUpperCase(), workOrder.contaminants && `Contaminants: ${workOrder.contaminants}`].filter(Boolean).join(" · ")}
+          </p>
+        )}
+      </header>
 
-        <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="border border-line bg-white p-6">
-            <div className="flex items-center gap-2"><History className="text-brand" size={20} /><h2 className="text-xl font-bold">Status history</h2></div>
-            <div className="relative mt-6 ml-2 border-l-2 border-brand-soft">
-              {workOrder.statusHistory.length ? workOrder.statusHistory.map((entry) => <article className="relative pb-6 pl-6 last:pb-0" key={entry.id}>
-                <span className="absolute -left-[7px] top-1 size-3 rounded-full bg-brand ring-4 ring-white" />
-                <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-bold">{entry.serviceStage.displayName}</p><p className="mt-1 text-sm text-muted">{formatEnumLabel(entry.condition)} · {entry.changedBy.displayName}</p></div><time className="text-xs text-muted">{formatDate(entry.createdAt)}</time></div>
-                {entry.note && <p className="mt-2 text-sm leading-6 text-body">{entry.note}</p>}
-              </article>) : <p className="pl-6 text-sm text-muted">Status changes will appear here.</p>}
-            </div>
-          </div>
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid content-start gap-6">
+          <TimelineComposer customerHasPortalUsers={customerPortalUsers > 0} workOrderId={workOrder.id} />
+          <Section icon={<History className="text-brand" size={20} />} title="Timeline">
+            <TimelineList entries={timeline} workOrderId={workOrder.id} />
+          </Section>
+        </div>
 
-          <aside className="border border-line bg-white p-6">
-            <div className="flex items-center gap-2"><ClipboardCheck className="text-brand" size={20} /><h2 className="text-xl font-bold">Update service state</h2></div>
-            <p className="mt-2 text-sm leading-6 text-muted">Internal stage and temporary condition are tracked separately from the customer-facing repair status.</p>
-            <ActionFeedbackForm action={updateWorkOrderStatus} className="mt-5 grid gap-3" successMessage="Service state updated.">
+        <aside className="grid content-start gap-6">
+          <Section icon={<ClipboardCheck className="text-brand" size={20} />} title="Service state">
+            <ActionFeedbackForm action={updateWorkOrderStatus} className="grid gap-3" successMessage="Service state updated.">
               <input name="workOrderId" type="hidden" value={workOrder.id} />
-              <label className="grid gap-1.5 text-sm font-bold" htmlFor="service-stage">Service stage<select className={fieldStyles} defaultValue={workOrder.serviceStageId} id="service-stage" name="serviceStageId">{serviceStages.map((stage) => <option key={stage.id} value={stage.id}>{stage.displayName}</option>)}</select></label>
-              <label className="grid gap-1.5 text-sm font-bold" htmlFor="work-order-condition">Condition<select className={fieldStyles} defaultValue={workOrder.condition} id="work-order-condition" name="condition">{Object.values(WorkOrderCondition).map((condition) => <option key={condition} value={condition}>{formatEnumLabel(condition)}</option>)}</select></label>
-              <button className="bg-brand px-3 py-2.5 text-sm font-bold text-white hover:bg-brand-strong">Save service state</button>
+              <Field htmlFor="service-stage" label="Stage">
+                <select className={fieldStyles} defaultValue={workOrder.serviceStageId} id="service-stage" name="serviceStageId">{stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.displayName}</option>)}</select>
+              </Field>
+              <Field htmlFor="work-order-condition" label="Condition">
+                <select className={fieldStyles} defaultValue={workOrder.condition} id="work-order-condition" name="condition">{Object.values(WorkOrderCondition).map((condition) => <option key={condition} value={condition}>{formatEnumLabel(condition)}</option>)}</select>
+              </Field>
+              <Field hint="Staff only. Say what was done or who picks it up next." htmlFor="status-note" label="Handoff note" optional>
+                <textarea className={fieldStyles} id="status-note" maxLength={1000} name="note" rows={2} />
+              </Field>
+              <button className={buttonStyles()}>Update state</button>
             </ActionFeedbackForm>
-          </aside>
-        </section>
+          </Section>
 
-        <section className="mt-8 grid gap-6 xl:grid-cols-3">
-          <div className="border border-line bg-white p-6">
-            <div className="flex items-center gap-2"><Camera className="text-brand" size={20} /><h2 className="text-xl font-bold">Customer photos</h2></div>
-            <p className="mt-2 text-sm text-muted">Upload categorized service evidence visible to the customer.</p>
-            <ActionFeedbackForm action={createCustomerVisiblePhotos} className="mt-5 grid gap-3" successMessage="Photos uploaded.">
-              <input name="workOrderId" type="hidden" value={workOrder.id} />
-              <label className="grid gap-1.5 text-sm font-bold">Photos<input className={fieldStyles} type="file" name="files" accept="image/*" multiple required /></label>
-              <label className="grid gap-1.5 text-sm font-bold">Category<select className={fieldStyles} name="photoCategory" defaultValue="INSPECTION">{photoCategories.map((category) => <option key={category} value={category}>{formatEnumLabel(category)}</option>)}</select></label>
-              <button className="flex items-center justify-center gap-2 bg-brand px-3 py-2.5 text-sm font-bold text-white hover:bg-brand-strong"><Camera size={16} /> Upload photos</button>
-            </ActionFeedbackForm>
-            <div className="mt-6 border-t border-line pt-4"><p className="text-xs font-bold tracking-[0.08em] text-muted">UPLOADED PHOTOS · {photos.length}</p>{photos.length ? <div className="mt-3 grid gap-2">{photos.map((attachment) => <div className="border-l-2 border-brand-soft pl-3" key={attachment.id}><p className="break-words text-sm font-bold">{attachment.fileName}</p><p className="mt-1 text-xs text-muted">{attachment.photoCategory ? formatEnumLabel(attachment.photoCategory) : "Uncategorized"} · {Math.ceil(attachment.sizeBytes / 1024)} KB</p></div>)}</div> : <p className="mt-3 text-sm text-muted">No photos uploaded yet.</p>}</div>
-          </div>
+          <Section icon={<Info className="text-brand" size={20} />} title="Details">
+            <Facts items={[
+              ["Service center", workOrder.serviceCenter ? `${workOrder.serviceCenter.code} · ${workOrder.serviceCenter.name}` : null],
+              ["Received", workOrder.receivedAt ? dateTime.format(workOrder.receivedAt) : null],
+              ["Promised", workOrder.promisedAt ? dateOnly.format(workOrder.promisedAt) : null],
+              ["Customer PO", workOrder.customerPurchaseOrder],
+              ["RMA", workOrder.rmaReference],
+              ["Opened by", workOrder.createdBy.displayName],
+            ]} />
+          </Section>
 
-          <div className="border border-line bg-white p-6">
-            <div className="flex items-center gap-2"><FileText className="text-brand" size={20} /><h2 className="text-xl font-bold">Documents</h2></div>
-            <p className="mt-2 text-sm text-muted">Store repair documentation and choose what customers can view.</p>
-            <ActionFeedbackForm action={createInternalDocument} className="mt-5 grid gap-3" successMessage="Document uploaded.">
-              <input name="workOrderId" type="hidden" value={workOrder.id} />
-              <label className="grid gap-1.5 text-sm font-bold">Document<input className={fieldStyles} type="file" name="file" required /></label>
-              <label className="grid gap-1.5 text-sm font-bold">Document type<select className={fieldStyles} name="documentType" defaultValue="OTHER">{documentTypes.map((documentType) => <option key={documentType} value={documentType}>{formatEnumLabel(documentType)}</option>)}</select></label>
-              <label className="grid gap-1.5 text-sm font-bold">Visibility<select className={fieldStyles} name="visibility" defaultValue="INTERNAL_ONLY"><option value="INTERNAL_ONLY">Internal only</option><option value="CUSTOMER_VISIBLE">Visible to customer</option></select></label>
-              <button className="flex items-center justify-center gap-2 bg-ink px-3 py-2.5 text-sm font-bold text-white hover:bg-body"><FileText size={16} /> Upload document</button>
-            </ActionFeedbackForm>
-            <div className="mt-6 border-t border-line pt-4"><p className="text-xs font-bold tracking-[0.08em] text-muted">DOCUMENTS · {documents.length}</p>{documents.length ? <div className="mt-3 grid gap-3">{documents.map((document) => <article className="border-l-2 border-brand-soft pl-3" key={document.id}><div className="flex items-start justify-between gap-3"><a className="break-words text-sm font-bold hover:text-brand" href={`/api/internal/attachments/${document.id}`}>{document.fileName}</a><div className="flex shrink-0 gap-3"><ActionFeedbackForm action={updateDocumentVisibility} successMessage="Visibility updated."><input name="attachmentId" type="hidden" value={document.id} /><input name="visibility" type="hidden" value={document.visibility === "CUSTOMER_VISIBLE" ? "INTERNAL_ONLY" : "CUSTOMER_VISIBLE"} /><button className="text-xs font-bold text-brand">{document.visibility === "CUSTOMER_VISIBLE" ? "Make internal" : "Share"}</button></ActionFeedbackForm><ActionFeedbackForm action={deleteDocument} successMessage="Document deleted."><input name="attachmentId" type="hidden" value={document.id} /><button className="text-xs font-bold text-danger">Delete</button></ActionFeedbackForm></div></div><p className="mt-1 text-xs text-muted">{document.documentType ? formatEnumLabel(document.documentType) : "Other"} · {document.visibility === "CUSTOMER_VISIBLE" ? "Customer visible" : "Internal only"} · {Math.ceil(document.sizeBytes / 1024)} KB</p></article>)}</div> : <p className="mt-3 text-sm text-muted">No documents uploaded yet.</p>}</div>
-          </div>
+          <Section icon={<ClipboardCheck className="text-brand" size={20} />} title="Intake">
+            <Facts items={[
+              ["Tool ID", workOrder.toolId],
+              ["Oil", [workOrder.oilType, workOrder.oilWeight].filter(Boolean).join(" · ") || null],
+              ["Copper class", workOrder.copperClassification === "UNKNOWN" ? null : copperClassificationLabels[workOrder.copperClassification]],
+              ["Contaminants", workOrder.contaminants],
+              ["Reason", workOrder.reasonForService],
+              ["Accessories", workOrder.accessoriesReceived],
+            ]} />
+          </Section>
 
-          <div className="border border-line bg-white p-6">
-            <div className="flex items-center gap-2"><FilePlus2 className="text-brand" size={20} /><h2 className="text-xl font-bold">Internal findings</h2></div>
-            <p className="mt-2 text-sm text-muted">Keep technician observations and repair notes with this work order.</p>
-            <ActionFeedbackForm action={createInternalFinding} className="mt-5 grid gap-3" successMessage="Finding added.">
-              <input name="workOrderId" type="hidden" value={workOrder.id} />
-              <label className="grid gap-1.5 text-sm font-bold">Title<input className={fieldStyles} name="title" required /></label>
-              <label className="grid gap-1.5 text-sm font-bold">Finding<textarea className={fieldStyles} name="body" required rows={4} /></label>
-              <button className="flex items-center justify-center gap-2 bg-ink px-3 py-2.5 text-sm font-bold text-white hover:bg-body"><Wrench size={16} /> Add finding</button>
-            </ActionFeedbackForm>
-            <div className="mt-6 border-t border-line pt-4"><p className="text-xs font-bold tracking-[0.08em] text-muted">FINDINGS · {workOrder.findings.length}</p>{workOrder.findings.length ? <div className="mt-3 grid gap-4">{workOrder.findings.map((finding) => <article className="border-l-2 border-brand-soft pl-3" key={finding.id}><p className="text-sm font-bold">{finding.title}</p><p className="mt-2 text-sm leading-6 text-body">{finding.body}</p><p className="mt-2 text-xs text-muted">{finding.createdBy.displayName} · {formatDate(finding.createdAt)}</p></article>)}</div> : <p className="mt-3 text-sm text-muted">No internal findings yet.</p>}</div>
-          </div>
-        </section>
-
-        <section className="mt-8 border border-line bg-white p-6">
-          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line pb-5"><div className="flex items-center gap-2"><Activity className="text-brand" size={20} /><div><h2 className="text-xl font-bold">Activity</h2><p className="mt-1 text-sm text-muted">Audited changes, uploads, and service record actions.</p></div></div><p className="text-sm font-bold text-muted">{activity.total} event{activity.total === 1 ? "" : "s"}</p></div>
-          <div className="divide-y divide-line">{activity.events.length ? activity.events.map((event) => <article className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_auto]" key={event.id}><div><p className="font-bold">{event.eventType.replace(".", " - ")}</p><p className="mt-1 text-sm text-muted">{event.actorUser?.displayName ?? "System"} · {event.entityType}</p></div><time className="text-xs text-muted">{formatDate(event.createdAt)}</time></article>) : <p className="py-8 text-sm text-muted">No activity recorded yet.</p>}</div>
-          {activityPageCount > 1 && <nav className="mt-5 flex items-center justify-between border-t border-line pt-5 text-sm" aria-label="Work-order activity pagination"><Link className={currentActivityPage > 1 ? "flex items-center gap-1 font-bold text-brand" : "pointer-events-none text-subtle"} href={activityHref(currentActivityPage - 1)}><ChevronLeft size={16} /> Newer</Link><span className="text-muted">Page {currentActivityPage} of {activityPageCount}</span><Link className={currentActivityPage < activityPageCount ? "flex items-center gap-1 font-bold text-brand" : "pointer-events-none text-subtle"} href={activityHref(currentActivityPage + 1)}>Older <ChevronRight size={16} /></Link></nav>}
-        </section>
+          <Section icon={<UserRound className="text-brand" size={20} />} title="Customer contact">
+            {workOrder.customerContactName || workOrder.customerContactEmail || workOrder.customerContactPhone ? (
+              <div className="grid gap-1 text-sm">
+                {workOrder.customerContactName && <p className="font-bold">{workOrder.customerContactName}</p>}
+                {workOrder.customerContactPhone && <p>{workOrder.customerContactPhone}</p>}
+                {workOrder.customerContactEmail && <p className="break-all">{workOrder.customerContactEmail}</p>}
+              </div>
+            ) : <p className="text-sm text-muted">No contact recorded for this repair.</p>}
+            <p className="mt-3 text-xs text-muted">{customerPortalUsers ? `${customerPortalUsers} customer portal user${customerPortalUsers === 1 ? "" : "s"} can follow this repair.` : "No one at this customer has portal access yet."}</p>
+          </Section>
+        </aside>
       </div>
+
+      <Section className="mt-6" icon={<Camera className="text-brand" size={20} />} id="photos" title={`Photos (${photos.length})`}>
+        <PhotoGallery initialPhotoId={initialPhotoId} photos={photos} workOrderId={workOrder.id} />
+      </Section>
+
+      <Section className="mt-6" icon={<FileText className="text-brand" size={20} />} title={`Documents (${documents.length})`}>
+        <ActionFeedbackForm action={createInternalDocument} className="grid gap-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end" feedbackClassName="sm:col-span-4" resetOnSuccess successMessage="Document uploaded.">
+          <input name="workOrderId" type="hidden" value={workOrder.id} />
+          <Field htmlFor="document-file" label="Document"><input className={fieldStyles} id="document-file" name="file" required type="file" /></Field>
+          <Field htmlFor="document-type" label="Type">
+            <select className={fieldStyles} defaultValue="OTHER" id="document-type" name="documentType">{Object.entries(documentTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          </Field>
+          <Field htmlFor="document-visibility" label="Who can see it">
+            <select className={fieldStyles} defaultValue="INTERNAL_ONLY" id="document-visibility" name="visibility"><option value="INTERNAL_ONLY">Staff only</option><option value="CUSTOMER_VISIBLE">Customer and staff</option></select>
+          </Field>
+          <button className={buttonStyles({ variant: "secondary" })}><FileText size={16} /> Upload</button>
+        </ActionFeedbackForm>
+        {documents.length ? (
+          <ul className="mt-5 divide-y divide-line border-y border-line">
+            {documents.map((document) => (
+              <li className="flex flex-wrap items-center justify-between gap-3 py-3" key={document.id}>
+                <div className="min-w-0">
+                  <a className="break-words font-bold hover:text-brand" href={`/api/internal/attachments/${document.id}`}>{document.fileName}</a>
+                  <p className="mt-0.5 text-xs text-muted">{document.documentType ? documentTypeLabels[document.documentType] : "Other"} · {Math.ceil(document.sizeBytes / 1024)} KB · {document.uploadedBy.displayName}, {dateTime.format(document.uploadedAt)}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge tone={document.visibility === "CUSTOMER_VISIBLE" ? "brand" : "neutral"}>{document.visibility === "CUSTOMER_VISIBLE" ? "Customer can see" : "Staff only"}</Badge>
+                  {isManager && (
+                    <>
+                      <ActionFeedbackForm action={updateDocumentVisibility} successMessage="Visibility updated.">
+                        <input name="attachmentId" type="hidden" value={document.id} />
+                        <input name="visibility" type="hidden" value={document.visibility === "CUSTOMER_VISIBLE" ? "INTERNAL_ONLY" : "CUSTOMER_VISIBLE"} />
+                        <button className="text-xs font-bold text-brand">{document.visibility === "CUSTOMER_VISIBLE" ? "Make staff only" : "Share with customer"}</button>
+                      </ActionFeedbackForm>
+                      <ActionFeedbackForm action={deleteDocument} successMessage="Document deleted.">
+                        <input name="attachmentId" type="hidden" value={document.id} />
+                        <button className="text-xs font-bold text-danger">Delete</button>
+                      </ActionFeedbackForm>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="mt-5 text-sm text-muted">No documents yet. Upload POs, quotes, invoices, reports and manuals here.</p>}
+      </Section>
     </main>
   );
 }

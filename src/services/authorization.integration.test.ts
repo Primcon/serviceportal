@@ -4,7 +4,7 @@ import { PrismaClient, UserRole } from "@prisma/client";
 import { assertPersistedInternalRole, getActiveInternalUserForRoles } from "./authorization";
 import { grantUserAccess, updateDocumentVisibility, updateInternalUserRole, updateServiceStage } from "@/features/admin/actions";
 import { approveAccessRequest } from "@/features/access/actions";
-import { createCompany, createCustomerVisiblePhotos, createEquipment, createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
+import { createCompany, uploadWorkOrderPhotos, createEquipment, createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
 import sharp from "sharp";
 import { storePrivateBuffer, storePrivateFile } from "@/services/private-storage";
 
@@ -316,7 +316,7 @@ describe("database-backed internal authorization", () => {
     try {
       const storageUnavailable = { status: "error", message: "Private file storage is not configured." };
       await expect(createInternalDocument(documentFormData)).resolves.toMatchObject(storageUnavailable);
-      await expect(createCustomerVisiblePhotos(photoFormData)).resolves.toMatchObject(storageUnavailable);
+      await expect(uploadWorkOrderPhotos(photoFormData)).resolves.toMatchObject(storageUnavailable);
       expect(await prisma.attachment.count({ where: { workOrderId: workOrder.id } })).toBe(0);
     } finally {
       vi.mocked(storePrivateFile).mockReset();
