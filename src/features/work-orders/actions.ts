@@ -13,7 +13,6 @@ import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWork
 import { detectDocumentType, detectPhotoType, supportedDocumentDescription, supportedPhotoDescription } from "@/services/file-types";
 import { deletePrivateFile, storePrivateBuffer } from "@/services/private-storage";
 import { logCustomerNotification, statusChangeNotification } from "@/services/notifications";
-import { ensureInitialStages } from "./initial-stages";
 
 const requiredText = z.string().trim().min(1);
 const photoCategorySchema = z.enum([
@@ -161,69 +160,6 @@ export async function createEquipment(formData: FormData): Promise<ActionResult>
       await recordAudit(transaction, { actorUserId: internalUser.id, eventType: "equipment.created", entityType: "Equipment", entityId: equipment.id });
     });
     revalidatePath("/workspace");
-  });
-}
-
-export async function createWorkOrder(formData: FormData): Promise<ActionResult> {
-  return runAction(async () => {
-    const input = z
-      .object({
-        equipmentId: requiredText,
-        workOrderNumber: requiredText,
-        summary: requiredText,
-        serviceType: z.string().trim(),
-        priority: z.string().trim(),
-      })
-      .parse({
-        equipmentId: value(formData, "equipmentId"),
-        workOrderNumber: value(formData, "workOrderNumber"),
-        summary: value(formData, "summary"),
-        serviceType: value(formData, "serviceType"),
-        priority: value(formData, "priority"),
-      });
-    const internalUser = await getActiveInternalUser();
-    const receivedStage = await prisma.serviceStage.findUnique({ where: { code: "RECEIVED" } }) ?? await ensureInitialStages(prisma);
-
-    await prisma.$transaction(async (transaction) => {
-      const equipment = await transaction.equipment.findUnique({ where: { id: input.equipmentId } });
-      if (!equipment) throw new UserFacingError("Equipment not found.");
-      const duplicate = await transaction.workOrder.findUnique({
-        where: { companyId_workOrderNumber: { companyId: equipment.companyId, workOrderNumber: input.workOrderNumber } },
-        select: { id: true },
-      });
-      if (duplicate) throw new UserFacingError("This customer already has a work order with that number.");
-      const workOrder = await transaction.workOrder.create({
-        data: {
-          ...input,
-          companyId: equipment.companyId,
-          locationId: equipment.locationId,
-          serviceType: input.serviceType || null,
-          priority: input.priority || null,
-          serviceStageId: receivedStage.id,
-          customerFacingStatus: receivedStage.customerFacingStatus,
-          createdById: internalUser.id,
-          receivedAt: new Date(),
-        },
-      });
-      await transaction.workOrderStatusHistory.create({
-        data: {
-          workOrderId: workOrder.id,
-          serviceStageId: receivedStage.id,
-          condition: workOrder.condition,
-          changedById: internalUser.id,
-        },
-      });
-      await recordAudit(transaction, {
-        workOrderId: workOrder.id,
-        actorUserId: internalUser.id,
-        eventType: "work-order.created",
-        entityType: "WorkOrder",
-        entityId: workOrder.id,
-        customerVisible: true,
-      });
-    });
-    revalidatePath("/workspace");
-    revalidatePath("/portal");
   });
 }
 

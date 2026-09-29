@@ -39,3 +39,10 @@ describe("runAction", () => {
     log.mockRestore();
   });
 });
+
+describe("runAction validation without a field", () => {
+  it("shows the rule's own message when there's no field to highlight", async () => {
+    const result = await runAction(async () => { z.string().uuid("Choose a pump first.").parse("nope"); });
+    expect(result).toEqual({ status: "error", message: "Choose a pump first." });
+  });
+});

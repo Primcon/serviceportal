@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { CopperClassification, UserRole } from "@prisma/client";
+import { UserRole } from "@prisma/client";
 import { z } from "zod";
+import { detailFields, detailsSchema, optionalText } from "@/features/work-orders/details-schema";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/lib/action-result";
 import { AccessDeniedError, UserFacingError } from "@/lib/errors";
@@ -22,12 +23,6 @@ function revalidateWorkOrder(workOrderId: string) {
   revalidatePath("/workspace");
   revalidatePath("/portal");
 }
-
-const optionalText = (max: number) => z.string().trim().max(max).transform((text) => text || null);
-
-/** A calendar date from a date input ("2026-10-28"), stored as midnight UTC so it reads the same everywhere. */
-const optionalDate = z.string().trim().refine((text) => !text || /^\d{4}-\d{2}-\d{2}$/.test(text), "Enter a valid date.")
-  .transform((text) => (text ? new Date(`${text}T00:00:00.000Z`) : null));
 
 const entrySchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("customer-update"), title: z.string().trim().min(1).max(160), body: z.string().trim().min(1).max(10000), notifyCustomer: z.boolean() }),
@@ -87,32 +82,6 @@ export async function postWorkOrderEntry(formData: FormData): Promise<ActionResu
     return entry.kind === "finding" ? "Finding added." : "Note added.";
   });
 }
-
-const detailFields = [
-  "summary", "priority", "serviceType", "customerPurchaseOrder", "rmaReference", "promisedAt", "serviceCenterId",
-  "toolId", "oilType", "oilWeight", "reasonForService", "contaminants", "copperClassification", "accessoriesReceived",
-  "customerContactName", "customerContactPhone", "customerContactEmail",
-] as const;
-
-const detailsSchema = z.object({
-  summary: z.string().trim().min(1).max(500),
-  priority: optionalText(60),
-  serviceType: optionalText(60),
-  customerPurchaseOrder: optionalText(80),
-  rmaReference: optionalText(80),
-  promisedAt: optionalDate,
-  serviceCenterId: z.string().trim().uuid().or(z.literal("")).transform((id) => id || null),
-  toolId: optionalText(80),
-  oilType: optionalText(80),
-  oilWeight: optionalText(40),
-  reasonForService: optionalText(500),
-  contaminants: optionalText(200),
-  copperClassification: z.nativeEnum(CopperClassification),
-  accessoriesReceived: optionalText(500),
-  customerContactName: optionalText(120),
-  customerContactPhone: optionalText(40),
-  customerContactEmail: z.string().trim().max(254).refine((email) => !email || z.string().email().safeParse(email).success, "Enter a valid email address.").transform((email) => email || null),
-});
 
 function comparable(value: unknown) {
   return value instanceof Date ? value.toISOString() : value ?? null;

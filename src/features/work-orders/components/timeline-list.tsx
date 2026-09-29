@@ -39,7 +39,7 @@ export function TimelineList({ entries, workOrderId }: { entries: TimelineEntry[
         switch (entry.kind) {
           case "status":
             return (
-              <Entry icon={<Flag size={15} />} key={`status-${entry.id}`} meta={meta} title={entry.isFirst ? `Received into ${entry.stage}` : `Moved to ${entry.stage}`} tone="ink">
+              <Entry icon={<Flag size={15} />} key={`status-${entry.id}`} meta={meta} title={entry.isFirst ? `Work order opened at ${entry.stage}` : `Moved to ${entry.stage}`} tone="ink">
                 <p className="text-muted">Customer sees: {customerStatusLabels[entry.customerStatus]}{entry.condition !== "NORMAL" && ` · Condition: ${formatEnumLabel(entry.condition)}`}</p>
                 {entry.note && <div className="mt-1 border-l-2 border-line pl-3"><Body text={entry.note} /></div>}
               </Entry>

@@ -28,7 +28,10 @@ export async function runAction(work: () => Promise<string | void>): Promise<Act
   } catch (error) {
     unstable_rethrow(error);
     if (error instanceof ZodError) {
-      return { status: "error", message: "Check the highlighted fields and try again.", fieldErrors: fieldErrorsFrom(error) };
+      const fieldErrors = fieldErrorsFrom(error);
+      // A rule that isn't tied to a named field has nothing to highlight, so show its message.
+      if (!Object.keys(fieldErrors).length) return { status: "error", message: error.issues[0]?.message ?? "Check your entries and try again." };
+      return { status: "error", message: "Check the highlighted fields and try again.", fieldErrors };
     }
     if (error instanceof UserFacingError) {
       return { status: "error", message: error.message };
