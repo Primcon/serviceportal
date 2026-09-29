@@ -1,13 +1,13 @@
-import { UserRole } from "@prisma/client";
 import { Building2, MapPin, Package, Wrench } from "lucide-react";
 import CustomerLocationCommands from "@/components/customer-location-commands";
 import { prisma } from "@/lib/prisma";
-import { getActiveInternalUserForRoles } from "@/services/authorization";
+import { requireWorkspaceUser } from "@/services/page-access";
+import { managerRoles } from "@/features/navigation/workspace-items";
 
 export const dynamic = "force-dynamic";
 
 export default async function CustomersPage() {
-  await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
+  await requireWorkspaceUser(managerRoles);
   const companies = await prisma.company.findMany({
     orderBy: { name: "asc" },
     select: {

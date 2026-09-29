@@ -3,13 +3,13 @@ import { ArrowLeft, ClipboardPlus } from "lucide-react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { createWorkOrder } from "@/features/work-orders/actions";
 import { prisma } from "@/lib/prisma";
-import { getActiveInternalUser } from "@/services/authorization";
 import { fieldStyles } from "@/components/ui/styles";
+import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewWorkOrderPage() {
-  await getActiveInternalUser();
+  await requireWorkspaceUser();
   const equipment = await prisma.equipment.findMany({
     orderBy: [{ company: { name: "asc" } }, { productModel: "asc" }, { serialNumber: "asc" }],
     select: { id: true, productModel: true, serialNumber: true, company: { select: { name: true } }, location: { select: { name: true } } },

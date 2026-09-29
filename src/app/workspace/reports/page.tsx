@@ -1,11 +1,10 @@
-import { ReportFrequency, ReportType, UserRole } from "@prisma/client";
+import { ReportFrequency, ReportType } from "@prisma/client";
 import { CalendarClock, Download, FileSpreadsheet, Mail, Pause, Play, Send, Trash2 } from "lucide-react";
-import { redirect } from "next/navigation";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { createReportSchedule, deleteReportSchedule, sendReportSchedule, updateReportScheduleStatus } from "@/features/reports/actions";
 import { prisma } from "@/lib/prisma";
-import { getActiveInternalUserForRoles } from "@/services/authorization";
-import { getRequestActor } from "@/services/request-actor";
+import { requireWorkspaceUser } from "@/services/page-access";
+import { managerRoles } from "@/features/navigation/workspace-items";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +21,7 @@ function ReportFilters({ companies }: { companies: { id: string; name: string }[
 }
 
 export default async function ReportsPage() {
-  const actor = await getRequestActor("employee");
-  if (!actor) redirect("/api/auth/employee/login");
-  await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
+  await requireWorkspaceUser(managerRoles);
   const [companies, schedules] = await Promise.all([
     prisma.company.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.reportSchedule.findMany({ orderBy: { nextRunAt: "asc" }, include: { createdBy: { select: { displayName: true } } } }),

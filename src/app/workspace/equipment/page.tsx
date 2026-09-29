@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Package, Search, SlidersHorizontal } from "lucide-react";
 import EquipmentCreateForm from "@/components/equipment-create-form";
 import { prisma } from "@/lib/prisma";
-import { getActiveInternalUser } from "@/services/authorization";
 import { fieldStyles } from "@/components/ui/styles";
+import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ function firstParam(value: string | string[] | undefined) {
 }
 
 export default async function EquipmentPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  await getActiveInternalUser();
+  await requireWorkspaceUser();
   const params = await searchParams;
   const search = firstParam(params.search)?.trim() ?? "";
   const companyId = firstParam(params.companyId) ?? "";

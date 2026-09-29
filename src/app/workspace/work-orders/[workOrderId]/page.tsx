@@ -8,6 +8,7 @@ import { createCustomerVisiblePhotos, createInternalDocument, createInternalFind
 import { getInternalWorkOrder, getInternalWorkOrderActivity, listActiveServiceStages } from "@/features/work-orders/internal-queries";
 import { fieldStyles } from "@/components/ui/styles";
 import { formatEnumLabel } from "@/lib/labels";
+import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export default async function InternalWorkOrderPage({
   params: Promise<{ workOrderId: string }>;
   searchParams: Promise<SearchParams>;
 }) {
+  await requireWorkspaceUser();
   const { workOrderId } = await params;
   const resolvedSearchParams = await searchParams;
   const requestedActivityPage = Number(firstParam(resolvedSearchParams.activityPage) ?? "1");

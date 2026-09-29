@@ -4,6 +4,8 @@ import { Search, SlidersHorizontal, UserCheck, UsersRound } from "lucide-react";
 import UserDirectory from "@/components/user-directory";
 import { prisma } from "@/lib/prisma";
 import { listInternalUsers } from "@/features/work-orders/internal-queries";
+import { requireWorkspaceUser } from "@/services/page-access";
+import { managerRoles } from "@/features/navigation/workspace-items";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +18,7 @@ function firstParam(value: string | string[] | undefined) {
 const roleLabels = { PORTAL_ADMINISTRATOR: "Portal administrator", VACTECH_MANAGER: "VacTech manager", VACTECH_SERVICE_USER: "VacTech service user", CUSTOMER_USER: "Customer user" } as const;
 
 export default async function UsersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  await requireWorkspaceUser(managerRoles);
   const params = await searchParams;
   const search = firstParam(params.search)?.trim() ?? "";
   const status = firstParam(params.status) ?? "";

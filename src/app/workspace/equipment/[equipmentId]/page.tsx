@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ClipboardCheck, Package } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getInternalEquipment } from "@/features/work-orders/internal-queries";
+import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ function formatDate(date: Date) {
 }
 
 export default async function InternalEquipmentPage({ params }: { params: Promise<{ equipmentId: string }> }) {
+  await requireWorkspaceUser();
   const { equipmentId } = await params;
   const equipment = await getInternalEquipment(equipmentId);
   if (!equipment) notFound();

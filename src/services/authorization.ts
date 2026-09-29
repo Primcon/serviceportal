@@ -53,7 +53,7 @@ export async function assertPersistedInternalRole(
 ) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, isActive: true, internalRole: true },
+    select: { id: true, isActive: true, internalRole: true, displayName: true },
   });
   assertActiveUser(user);
   const role = process.env.AUTH_MODE === "entra" ? user?.internalRole : fallbackRole;

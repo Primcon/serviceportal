@@ -2,8 +2,8 @@ import Link from "next/link";
 import { CustomerFacingStatus, WorkOrderCondition } from "@prisma/client";
 import { ArrowUpRight, ClipboardList, Plus, SlidersHorizontal } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { getActiveInternalUser } from "@/services/authorization";
 import { formatEnumLabel } from "@/lib/labels";
+import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ function firstParam(value: string | string[] | undefined) {
 }
 
 export default async function WorkOrdersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  await getActiveInternalUser();
+  await requireWorkspaceUser();
   const params = await searchParams;
   const search = firstParam(params.search)?.trim() ?? "";
   const status = firstParam(params.status);

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Activity, Search } from "lucide-react";
 import { listInternalAuditEvents } from "@/features/work-orders/internal-queries";
+import { requireWorkspaceUser } from "@/services/page-access";
+import { managerRoles } from "@/features/navigation/workspace-items";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,7 @@ function formatDate(date: Date) {
 }
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  await requireWorkspaceUser(managerRoles);
   const resolvedSearchParams = await searchParams;
   const search = firstParam(resolvedSearchParams.search) ?? "";
   const requestedPage = Number(firstParam(resolvedSearchParams.page) ?? "1");
