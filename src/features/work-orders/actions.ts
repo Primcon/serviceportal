@@ -11,7 +11,7 @@ import { runAction } from "@/lib/run-action";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
 import { deletePrivateFile, storePrivateBuffer, storePrivateFile } from "@/services/private-storage";
-import { logCustomerNotification } from "@/services/notifications";
+import { logCustomerNotification, statusChangeNotification } from "@/services/notifications";
 import { ensureInitialStages } from "./initial-stages";
 
 const requiredText = z.string().trim().min(1);
@@ -309,18 +309,19 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
     await prisma.$transaction(async (transaction) => {
       const workOrder = await transaction.workOrder.findUniqueOrThrow({
         where: { id: input.workOrderId },
-        select: { companyId: true, workOrderNumber: true, serviceStageId: true, condition: true },
+        select: { companyId: true, workOrderNumber: true, serviceStageId: true, condition: true, customerFacingStatus: true, completedAt: true },
       });
       if (workOrder.serviceStageId === stage.id && workOrder.condition === input.condition) {
         return;
       }
+      const isCompleted = stage.code === "COMPLETED";
       await transaction.workOrder.update({
         where: { id: input.workOrderId },
         data: {
           serviceStageId: stage.id,
           customerFacingStatus: stage.customerFacingStatus,
           condition: input.condition,
-          completedAt: stage.code === "COMPLETED" ? new Date() : null,
+          completedAt: isCompleted ? workOrder.completedAt ?? new Date() : null,
         },
       });
       const statusHistory = await transaction.workOrderStatusHistory.create({
@@ -339,13 +340,15 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
         entityId: input.workOrderId,
         customerVisible: true,
       });
-      await logCustomerNotification(transaction, {
-        companyId: workOrder.companyId,
-        workOrderId: input.workOrderId,
-        eventKey: `status-change:${statusHistory.id}`,
-        subject: `Service status changed: ${stage.customerFacingStatus.replaceAll("_", " ")}`,
-        body: `Your repair ${workOrder.workOrderNumber} is now ${stage.customerFacingStatus.replaceAll("_", " ")} (${input.condition.replaceAll("_", " ")}).`,
-      });
+      // Customers hear about changes to the status they can see, not every internal stage move.
+      if (stage.customerFacingStatus !== workOrder.customerFacingStatus) {
+        await logCustomerNotification(transaction, {
+          companyId: workOrder.companyId,
+          workOrderId: input.workOrderId,
+          eventKey: `status-change:${statusHistory.id}`,
+          ...statusChangeNotification({ workOrderId: input.workOrderId, workOrderNumber: workOrder.workOrderNumber, status: stage.customerFacingStatus }),
+        });
+      }
     });
 
     revalidatePath("/workspace");

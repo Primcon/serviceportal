@@ -1,0 +1,33 @@
+name: vactech-notification-dispatch
+location: East US
+identity:
+  type: SystemAssigned
+properties:
+  environmentId: /subscriptions/40e90bbd-cd22-4ede-8702-8b8027ced023/resourceGroups/vactech-service-portal-rg/providers/Microsoft.App/managedEnvironments/vactech-service-env
+  configuration:
+    triggerType: Schedule
+    scheduleTriggerConfig:
+      cronExpression: "* * * * *"
+      parallelism: 1
+      replicaCompletionCount: 1
+    replicaTimeout: 120
+    replicaRetryLimit: 0
+    secrets:
+      - name: notification-worker-secret
+        keyVaultUrl: https://vactech-service-kv.vault.azure.net/secrets/notification-worker-secret
+        identity: system
+  template:
+    containers:
+      - name: dispatch-notifications
+        image: curlimages/curl:8.17.0
+        command:
+          - sh
+          - -c
+          - >-
+            curl --fail --silent --show-error --request POST "https://vactech-service-portal.ambitiouspebble-d8281bb3.eastus.azurecontainerapps.io/api/internal/notifications/dispatch?limit=25" --header "x-notification-worker-secret: $NOTIFICATION_WORKER_SECRET"
+        env:
+          - name: NOTIFICATION_WORKER_SECRET
+            secretRef: notification-worker-secret
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
