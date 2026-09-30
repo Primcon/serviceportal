@@ -258,6 +258,13 @@ model ServiceCenter {
   workOrders WorkOrder[]
 }
 
+/// Hands out numbers that must never repeat, one row per sequence. "work-order" holds the next WIP number.
+model NumberSequence {
+  name String @id
+  nextValue Int
+  updatedAt DateTime @updatedAt
+}
+
 /// An option in one of the editable work order picklists (priority, service type).
 model ListOption {
   id String @id @default(uuid()) @db.Uuid

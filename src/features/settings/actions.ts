@@ -10,6 +10,8 @@ import { runAction } from "@/lib/run-action";
 import { managerRoles } from "@/features/navigation/workspace-items";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
+import { workOrderSequence } from "@/features/work-orders/intake";
+import { highestWorkOrderNumber } from "@/features/settings/queries";
 
 function value(formData: FormData, name: string) {
   return formData.get(name)?.toString() ?? "";
@@ -101,5 +103,36 @@ export async function saveServiceCenter(formData: FormData): Promise<ActionResul
     });
     revalidatePath("/workspace/settings");
     return input.id ? "Service center saved." : `${input.code} added.`;
+  });
+}
+
+/**
+ * Sets the next WIP number, such as to carry on from the old system's count at go-live. It has
+ * to be above every number already used, so numbers never repeat.
+ */
+export async function saveNextWorkOrderNumber(formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const { nextNumber } = z.object({
+      nextNumber: z.coerce.number({ message: "Enter a whole number." }).int("Enter a whole number.").min(1).max(999_999_999),
+    }).parse({ nextNumber: value(formData, "nextNumber") });
+    const actor = await getActiveInternalUserForRoles(managerRoles);
+
+    await prisma.$transaction(async (transaction) => {
+      // Lock the counter first so an intake can't take a number while this is checked.
+      const [previous] = await transaction.$queryRaw<{ nextValue: number }[]>`SELECT "nextValue" FROM "NumberSequence" WHERE "name" = ${workOrderSequence} FOR UPDATE`;
+      const highest = await highestWorkOrderNumber(transaction);
+      if (nextNumber <= highest) throw new UserFacingError(`WIP ${highest} is already used, so the next number has to be ${highest + 1} or higher.`);
+      await transaction.numberSequence.upsert({ where: { name: workOrderSequence }, create: { name: workOrderSequence, nextValue: nextNumber }, update: { nextValue: nextNumber } });
+      await recordAudit(transaction, {
+        actorUserId: actor.id,
+        eventType: "work-order-number.next-set",
+        entityType: "NumberSequence",
+        entityId: workOrderSequence,
+        metadata: { from: previous?.nextValue ?? null, to: nextNumber },
+      });
+    });
+    revalidatePath("/workspace/settings");
+    revalidatePath("/workspace/work-orders/new");
+    return `The next work order will be WIP ${nextNumber}.`;
   });
 }

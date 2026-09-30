@@ -20,6 +20,7 @@ A company owns locations, equipment, work orders, and access grants. Equipment b
 
 - `ProductModel` is the catalog of manufacturer + model pairs (for example Edwards IL70N), unique ignoring case. Each pump links to one. `Equipment.productModel` keeps the display name in step with it. Manuals, and later warranty terms, attach per model.
 - `ServiceCenter` is a VacTech facility. Its code is the suffix on work order (WIP) numbers, such as AZ in "48366 AZ", and can't change once work orders use it.
+- WIP numbers are assigned by the portal at intake, not typed. The `NumberSequence` row "work-order" holds the next number; intake increments it inside its transaction (the row lock keeps simultaneous intakes from sharing a number, and a failed intake gives its number back) and skips any number already on a work order, such as an imported one. Managers set the next number in Settings, for example to carry on from WordPress at go-live, and it can't be set at or below the highest number in use. Whether the suffix really means the facility is still being confirmed with VacTech.
 - `ListOption` holds the editable priority and service-type picklists. Work orders store the chosen label as text, so imported values and retired options survive list changes.
 
 These are managed on the workspace Settings page. Entries are retired (made inactive) rather than deleted.

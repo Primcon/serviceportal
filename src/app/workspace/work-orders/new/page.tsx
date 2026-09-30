@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { NewWorkOrderForm } from "@/features/work-orders/components/new-work-order-form";
 import { modelDisplayName } from "@/features/work-orders/intake";
-import { listOptions, serviceCenters } from "@/features/settings/queries";
+import { listOptions, serviceCenters, workOrderNumbering } from "@/features/settings/queries";
 import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewWorkOrderPage() {
   await requireWorkspaceUser();
-  const [companies, models, centers, priorities, serviceTypes] = await Promise.all([
+  const [companies, models, centers, priorities, serviceTypes, numbering] = await Promise.all([
     prisma.company.findMany({
       where: { archivedAt: null },
       orderBy: { name: "asc" },
@@ -22,6 +22,7 @@ export default async function NewWorkOrderPage() {
     serviceCenters(),
     listOptions(ListKind.PRIORITY),
     listOptions(ListKind.SERVICE_TYPE),
+    workOrderNumbering(),
   ]);
 
   return (
@@ -34,6 +35,7 @@ export default async function NewWorkOrderPage() {
         <NewWorkOrderForm
           companies={companies}
           models={models.map((model) => ({ id: model.id, label: modelDisplayName(model.manufacturer, model.name) }))}
+          nextNumber={numbering.next}
           priorities={priorities}
           serviceCenters={centers}
           serviceTypes={serviceTypes}

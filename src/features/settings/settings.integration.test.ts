@@ -1,7 +1,9 @@
 import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaClient, UserRole } from "@prisma/client";
-import { saveListOption, saveServiceCenter } from "@/features/settings/actions";
+import { saveListOption, saveNextWorkOrderNumber, saveServiceCenter } from "@/features/settings/actions";
+import { workOrderNumbering } from "@/features/settings/queries";
+import { workOrderSequence } from "@/features/work-orders/intake";
 import { navigationForRole } from "@/features/navigation/workspace-items";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
 
@@ -77,6 +79,31 @@ describe("service center settings", () => {
 
   it("rejects codes that aren't 2 to 4 letters", async () => {
     await expect(saveServiceCenter(form({ code: "A1", name: `Bad ${suffix}` }))).resolves.toMatchObject({ status: "error", fieldErrors: { code: "Use 2 to 4 letters, such as AZ." } });
+  });
+});
+
+describe("work order numbering", () => {
+  it("moves the next WIP number forward, but never back onto a used number", async () => {
+    const { next, highest } = await workOrderNumbering();
+    if (highest > 0) {
+      // Intakes in other test files may use more numbers meanwhile, so only the wording is checked.
+      await expect(saveNextWorkOrderNumber(form({ nextNumber: String(highest) }))).resolves.toMatchObject({ status: "error", message: expect.stringMatching(/^WIP \d+ is already used, so the next number has to be \d+ or higher\.$/) });
+    }
+    await expect(saveNextWorkOrderNumber(form({ nextNumber: "12.5" }))).resolves.toMatchObject({ status: "error", fieldErrors: { nextNumber: "Enter a whole number." } });
+
+    // Well past the current next number, so intakes running in parallel can't make it a used number.
+    const target = next + 100;
+    await expect(saveNextWorkOrderNumber(form({ nextNumber: String(target) }))).resolves.toEqual({ status: "success", message: `The next work order will be WIP ${target}.` });
+    expect((await prisma.numberSequence.findUniqueOrThrow({ where: { name: workOrderSequence } })).nextValue).toBeGreaterThanOrEqual(target);
+  });
+
+  it("is limited to managers and administrators", async () => {
+    process.env.DEVELOPMENT_INTERNAL_ROLE = UserRole.VACTECH_SERVICE_USER;
+    try {
+      await expect(saveNextWorkOrderNumber(form({ nextNumber: "999999" }))).resolves.toMatchObject({ status: "error", message: "You don't have permission to do that." });
+    } finally {
+      process.env.DEVELOPMENT_INTERNAL_ROLE = UserRole.VACTECH_MANAGER;
+    }
   });
 });
 

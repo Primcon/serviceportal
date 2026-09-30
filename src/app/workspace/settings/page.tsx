@@ -1,12 +1,12 @@
 import { ListKind } from "@prisma/client";
-import { Building, Flag, Plus, Settings, Wrench } from "lucide-react";
+import { Building, Flag, Hash, Plus, Settings, Wrench } from "lucide-react";
 import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { buttonStyles, fieldStyles, panelStyles } from "@/components/ui/styles";
 import { managerRoles } from "@/features/navigation/workspace-items";
-import { saveListOption, saveServiceCenter } from "@/features/settings/actions";
-import { listOptions, serviceCenters } from "@/features/settings/queries";
+import { saveListOption, saveNextWorkOrderNumber, saveServiceCenter } from "@/features/settings/actions";
+import { listOptions, serviceCenters, workOrderNumbering } from "@/features/settings/queries";
 import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,7 @@ async function PicklistSection({ kind, title, description, icon }: { kind: ListK
 
 export default async function SettingsPage() {
   await requireWorkspaceUser(managerRoles);
-  const centers = await serviceCenters({ includeInactive: true });
+  const [centers, numbering] = await Promise.all([serviceCenters({ includeInactive: true }), workOrderNumbering()]);
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
@@ -92,6 +92,18 @@ export default async function SettingsPage() {
             <label className="grid gap-1.5 text-sm font-bold" htmlFor="new-center-code">Code<input className={`${fieldStyles} uppercase`} id="new-center-code" maxLength={4} name="code" placeholder="AZ" required /></label>
             <label className="grid gap-1.5 text-sm font-bold" htmlFor="new-center-name">Name<input className={fieldStyles} id="new-center-name" name="name" placeholder="Arizona service center" required /></label>
             <button className={buttonStyles({ size: "sm", className: "h-[42px]" })}><Plus size={16} /> Add</button>
+          </ActionFeedbackForm>
+        </SettingsSection>
+
+        <SettingsSection
+          description="The portal numbers each new work order automatically, counting up from here. Set this once at go-live so numbering carries on from the old system; it can't go back to a number that's already been used."
+          icon={<Hash className="text-brand" size={20} />}
+          title="Work order numbers"
+        >
+          <ActionFeedbackForm action={saveNextWorkOrderNumber} className="grid items-end gap-3 sm:grid-cols-[200px_auto_minmax(0,1fr)]" feedbackClassName="sm:col-span-3" successMessage="Saved.">
+            <label className="grid gap-1.5 text-sm font-bold" htmlFor="next-wip">Next WIP number<input className={fieldStyles} defaultValue={numbering.next} id="next-wip" key={numbering.next} min={numbering.highest + 1} name="nextNumber" required type="number" /></label>
+            <button className={buttonStyles({ variant: "outline", size: "sm", className: "h-[42px]" })}>Save</button>
+            <p className="text-sm text-muted">{numbering.highest ? `Highest used so far: ${numbering.highest}.` : "No work orders yet."}</p>
           </ActionFeedbackForm>
         </SettingsSection>
 

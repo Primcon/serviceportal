@@ -1,9 +1,0 @@
-
- RUN  v4.1.11 C:/dev/serviceportal
-
-
- Test Files  22 passed (22)
-      Tests  101 passed (101)
-   Start at  17:02:11
-   Duration  4.71s (transform 3.50s, setup 0ms, import 25.44s, tests 8.28s, environment 5ms)
-

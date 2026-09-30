@@ -110,25 +110,24 @@ function PumpSearch({ selected, onSelect }: { selected: PumpResult | null; onSel
   );
 }
 
-export function NewWorkOrderForm({ companies, models, serviceCenters, priorities, serviceTypes }: {
+export function NewWorkOrderForm({ companies, models, serviceCenters, priorities, serviceTypes, nextNumber }: {
   companies: Company[];
   models: Option[];
   serviceCenters: { id: string; code: string; name: string }[];
   priorities: Option[];
   serviceTypes: Option[];
+  nextNumber: number;
 }) {
   const [pumpMode, setPumpMode] = useState<"existing" | "new">("existing");
   const [pump, setPump] = useState<PumpResult | null>(null);
   const [companyId, setCompanyId] = useState("");
   const [modelId, setModelId] = useState("");
-  const [number, setNumber] = useState("");
   const [centerId, setCenterId] = useState(serviceCenters.length === 1 ? serviceCenters[0].id : "");
   const centerCode = serviceCenters.find((center) => center.id === centerId)?.code;
   const locations = companies.find((company) => company.id === companyId)?.locations ?? [];
   const intake = pumpMode === "existing" ? pump?.lastIntake : null;
   const intakePrefilled = Boolean(intake && Object.entries(intake).some(([key, fieldValue]) => fieldValue && !(key === "copperClassification" && fieldValue === "UNKNOWN")));
-  const trimmedNumber = number.trim().replace(/\s+/g, " ");
-  const previewNumber = trimmedNumber && centerCode && !new RegExp(`\\s${centerCode}$`, "i").test(trimmedNumber) ? `${trimmedNumber} ${centerCode}` : trimmedNumber;
+  const previewNumber = centerCode ? `${nextNumber} ${centerCode}` : String(nextNumber);
 
   return (
     <ActionFeedbackForm action={openWorkOrder} className="grid gap-6" successMessage="Work order opened.">
@@ -177,8 +176,8 @@ export function NewWorkOrderForm({ companies, models, serviceCenters, priorities
 
       <Step number={2} title="Job">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field hint={previewNumber ? `Saved as WIP ${previewNumber}` : "The WIP number from the job order form."} htmlFor="wip-number" label="WIP number">
-            <input className={fieldStyles} id="wip-number" maxLength={40} name="number" onChange={(event) => setNumber(event.target.value)} placeholder="48366" required value={number} />
+          <Field hint="Assigned when you save. If someone else opens a job first, this one gets the next number." htmlFor="wip-number" label="WIP number">
+            <output className={`${fieldStyles} block bg-surface font-bold`} id="wip-number">{previewNumber}</output>
           </Field>
           <Field htmlFor="service-center" label="Service center" optional={serviceCenters.length === 0}>
             <select className={fieldStyles} id="service-center" name="serviceCenterId" onChange={(event) => setCenterId(event.target.value)} required={serviceCenters.length > 0} value={centerId}>

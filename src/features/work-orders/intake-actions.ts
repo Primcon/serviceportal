@@ -8,7 +8,7 @@ import type { ActionResult } from "@/lib/action-result";
 import { UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
 import { detailFields, detailsSchema } from "@/features/work-orders/details-schema";
-import { findOrCreateProductModel, modelDisplayName, wipNumber } from "@/features/work-orders/intake";
+import { assignWorkOrderNumber, findOrCreateProductModel, modelDisplayName } from "@/features/work-orders/intake";
 import { ensureInitialStages } from "@/features/work-orders/initial-stages";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser } from "@/services/authorization";
@@ -29,14 +29,13 @@ const newPumpSchema = z.object({
 
 /**
  * Opens a work order when a pump arrives. The pump is either one already in the register or a
- * new one entered on the same form (with a new catalog model if needed). The WIP number gets
- * its service center suffix, and staff land on the new work order.
+ * new one entered on the same form (with a new catalog model if needed). The portal assigns the
+ * next WIP number, with its service center suffix, and staff land on the new work order.
  */
 export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
   let createdId = "";
   const result = await runAction(async () => {
     const pumpMode = value(formData, "pumpMode") === "new" ? "new" : "existing";
-    const job = z.object({ number: z.string().trim().min(1).max(40) }).parse({ number: value(formData, "number") });
     const details = detailsSchema.parse(Object.fromEntries(detailFields.map((field) => [field, value(formData, field) || (field === "copperClassification" ? "UNKNOWN" : "")])));
     const existingEquipmentId = pumpMode === "existing" ? z.object({ equipmentId: z.string().uuid("Search for the pump and choose it, or add a new pump.") }).parse({ equipmentId: value(formData, "equipmentId") }).equipmentId : null;
     const newPump = pumpMode === "new" ? newPumpSchema.parse({
@@ -57,9 +56,6 @@ export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
       if (details.serviceCenterId && !center) throw new UserFacingError("Service center not found.");
       // The center's code is part of the WIP number, so it's required once any center is set up.
       if (!center && await transaction.serviceCenter.count({ where: { isActive: true } }) > 0) throw new UserFacingError("Choose the service center doing the work.");
-      const workOrderNumber = wipNumber(job.number, center?.code ?? null);
-      const numberTaken = await transaction.workOrder.findFirst({ where: { workOrderNumber: { equals: workOrderNumber, mode: "insensitive" } }, select: { id: true } });
-      if (numberTaken) throw new UserFacingError(`WIP ${workOrderNumber} is already used by another work order.`);
 
       let equipment: { id: string; companyId: string; locationId: string | null };
       if (newPump) {
@@ -86,6 +82,8 @@ export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
         equipment = found;
       }
 
+      // Taken last, so the counter row is locked only briefly.
+      const workOrderNumber = await assignWorkOrderNumber(transaction, center?.code ?? null);
       const workOrder = await transaction.workOrder.create({
         data: {
           ...details,
