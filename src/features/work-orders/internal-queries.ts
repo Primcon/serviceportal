@@ -8,15 +8,22 @@ export async function getInternalWorkOrder(workOrderId: string) {
   return prisma.workOrder.findUnique({
     where: { id: workOrderId },
     include: {
-      company: { select: { name: true } },
-      equipment: { select: { productModel: true, serialNumber: true } },
-      serviceStage: { select: { displayName: true } },
+      company: { select: { id: true, name: true } },
+      location: { select: { name: true } },
+      equipment: { select: { id: true, productModel: true, serialNumber: true } },
+      serviceCenter: { select: { id: true, code: true, name: true } },
+      serviceStage: { select: { displayName: true, code: true } },
+      createdBy: { select: { displayName: true } },
       statusHistory: {
         orderBy: { createdAt: "desc" },
         include: {
-          serviceStage: { select: { displayName: true } },
+          serviceStage: { select: { displayName: true, customerFacingStatus: true } },
           changedBy: { select: { displayName: true } },
         },
+      },
+      updates: {
+        orderBy: { createdAt: "desc" },
+        include: { createdBy: { select: { displayName: true } } },
       },
       findings: {
         orderBy: { createdAt: "desc" },
@@ -24,7 +31,7 @@ export async function getInternalWorkOrder(workOrderId: string) {
       },
       attachments: {
         orderBy: { uploadedAt: "desc" },
-        select: { id: true, kind: true, fileName: true, photoCategory: true, documentType: true, visibility: true, mimeType: true, sizeBytes: true, uploadedAt: true },
+        select: { id: true, kind: true, fileName: true, caption: true, photoCategory: true, documentType: true, visibility: true, mimeType: true, sizeBytes: true, uploadedAt: true, uploadedById: true, uploadedBy: { select: { displayName: true } } },
       },
     },
   });

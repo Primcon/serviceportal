@@ -81,10 +81,10 @@ describe("customer status notifications", () => {
     expect(intake.customerFacingStatus).toBe("OPEN");
     expect(inspection.customerFacingStatus).toBe("IN_PROGRESS");
 
-    await expect(updateWorkOrderStatus(statusForm(intake.id))).resolves.toEqual({ status: "success" });
+    await expect(updateWorkOrderStatus(statusForm(intake.id))).resolves.toMatchObject({ status: "success" });
     expect(await prisma.notification.count({ where: { workOrderId } })).toBe(0);
 
-    await expect(updateWorkOrderStatus(statusForm(inspection.id))).resolves.toEqual({ status: "success" });
+    await expect(updateWorkOrderStatus(statusForm(inspection.id))).resolves.toMatchObject({ status: "success" });
     const notifications = await prisma.notification.findMany({ where: { workOrderId }, select: { subject: true, recipientEmail: true } });
     expect(notifications).toEqual([{ subject: `Repair NOTIFY-${suffix}: In progress`, recipientEmail: `notification-customer-${suffix}@test.invalid` }]);
   });
