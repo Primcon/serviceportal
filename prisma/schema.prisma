@@ -122,6 +122,8 @@ model Company {
   name String
   /// Set when the customer is archived: hidden from pickers, history kept.
   archivedAt DateTime?
+  /// Set when this customer was merged into another as a duplicate. Its records moved there; this row stays so imports can still find it.
+  mergedIntoId String? @db.Uuid
   /// Where an imported record came from (for example "wordpress") and its ID there, so imports can be re-run safely.
   legacySource String?
   legacyId String?
@@ -132,8 +134,11 @@ model Company {
   workOrders WorkOrder[]
   userAccess UserAccess[]
   accessRequests AccessRequest[]
+  mergedInto Company? @relation("CompanyMerge", fields: [mergedIntoId], references: [id], onDelete: Restrict)
+  mergedFrom Company[] @relation("CompanyMerge")
   @@unique([legacySource, legacyId])
   @@index([name])
+  @@index([mergedIntoId])
 }
 
 model Location {
@@ -182,6 +187,7 @@ model User {
   reviewedRequests AccessRequest[] @relation("AccessRequestReviewer")
   notificationPreference NotificationPreference?
   reportSchedules ReportSchedule[] @relation("ReportScheduleCreator")
+  modelDocuments ModelDocument[]
   @@unique([legacySource, legacyId])
 }
 
@@ -220,6 +226,8 @@ model Equipment {
   serialNumber String
   description String?
   archivedAt DateTime?
+  /// Set when this pump was merged into another as a duplicate. Its work orders moved there.
+  mergedIntoId String? @db.Uuid
   legacySource String?
   legacyId String?
   createdAt DateTime @default(now())
@@ -227,9 +235,12 @@ model Equipment {
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
   location Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
   catalogModel ProductModel? @relation(fields: [productModelId], references: [id], onDelete: Restrict)
+  mergedInto Equipment? @relation("EquipmentMerge", fields: [mergedIntoId], references: [id], onDelete: Restrict)
+  mergedFrom Equipment[] @relation("EquipmentMerge")
   workOrders WorkOrder[]
   attachments Attachment[]
   @@unique([legacySource, legacyId])
+  @@index([mergedIntoId])
   @@index([companyId, serialNumber])
   @@index([locationId])
   @@index([productModelId])
@@ -244,7 +255,27 @@ model ProductModel {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   equipment Equipment[]
+  documents ModelDocument[]
   @@index([name])
+}
+
+/// A manual or other document that applies to every pump of a catalog model.
+model ModelDocument {
+  id String @id @default(uuid()) @db.Uuid
+  productModelId String @db.Uuid
+  documentType DocumentType @default(MANUAL)
+  /// Customer-visible documents are shown to customers who have a pump of this model.
+  visibility RecordVisibility @default(INTERNAL_ONLY)
+  title String
+  storageKey String
+  fileName String
+  mimeType String
+  sizeBytes Int
+  uploadedById String @db.Uuid
+  uploadedAt DateTime @default(now())
+  productModel ProductModel @relation(fields: [productModelId], references: [id], onDelete: Restrict)
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  @@index([productModelId])
 }
 
 /// A VacTech facility that performs repairs. Its code is the suffix on work order (WIP) numbers, such as "AZ" in "48366 AZ".
@@ -256,6 +287,13 @@ model ServiceCenter {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   workOrders WorkOrder[]
+}
+
+/// Hands out numbers that must never repeat, one row per sequence. "work-order" holds the next WIP number.
+model NumberSequence {
+  name String @id
+  nextValue Int
+  updatedAt DateTime @updatedAt
 }
 
 /// An option in one of the editable work order picklists (priority, service type).

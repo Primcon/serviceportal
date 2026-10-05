@@ -161,11 +161,13 @@ describe("database-backed internal authorization", () => {
     const formData = new FormData();
     formData.set("companyId", crypto.randomUUID());
     formData.set("locationId", "");
-    formData.set("productModel", "Missing Company Model");
+    formData.set("productModelId", "__new");
+    formData.set("newManufacturer", "");
+    formData.set("newModelName", "Missing Company Model");
     formData.set("serialNumber", "MISSING-COMPANY");
     formData.set("description", "");
 
-    await expect(createEquipment(formData)).resolves.toMatchObject({ status: "error", message: "Company not found." });
+    await expect(createEquipment(formData)).resolves.toMatchObject({ status: "error", message: "Customer not found." });
   });
 
   it("prevents duplicate serial numbers within a company but allows them across companies", async () => {
@@ -180,7 +182,9 @@ describe("database-backed internal authorization", () => {
       const input = new FormData();
       input.set("companyId", companyId);
       input.set("locationId", "");
-      input.set("productModel", "Duplicate Test Model");
+      input.set("productModelId", "__new");
+      input.set("newManufacturer", "");
+      input.set("newModelName", `Duplicate Test Model ${suffix}`);
       input.set("serialNumber", serial);
       input.set("description", "");
       return input;
@@ -188,11 +192,14 @@ describe("database-backed internal authorization", () => {
 
     try {
       await createEquipment(formData(company.id, serialNumber));
-      await expect(createEquipment(formData(company.id, serialNumber.toLowerCase()))).resolves.toMatchObject({ status: "error", message: "Equipment with this serial number already exists for the selected company." });
-      await expect(createEquipment(formData(otherCompany.id, serialNumber))).resolves.toEqual({ status: "success" });
+      await expect(createEquipment(formData(company.id, serialNumber.toLowerCase()))).resolves.toMatchObject({ status: "error", message: "This customer already has a pump with that serial number." });
+      await expect(createEquipment(formData(otherCompany.id, serialNumber))).resolves.toEqual({ status: "success", message: "Pump added." });
       expect(await prisma.equipment.count({ where: { serialNumber } })).toBe(2);
+      // Both pumps share the one catalog model the first of them added.
+      expect(await prisma.productModel.count({ where: { name: `Duplicate Test Model ${suffix}` } })).toBe(1);
     } finally {
       await prisma.equipment.deleteMany({ where: { companyId: { in: [company.id, otherCompany.id] } } });
+      await prisma.productModel.deleteMany({ where: { name: `Duplicate Test Model ${suffix}` } });
       await prisma.company.deleteMany({ where: { id: { in: [company.id, otherCompany.id] } } });
     }
   });

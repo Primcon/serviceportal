@@ -3,8 +3,8 @@
 | Role | MVP capability |
 | --- | --- |
 | Portal Administrator | Full access and system administration |
-| VacTech Manager | Work orders, equipment, customers, users, access requests |
-| VacTech Service User | Work orders, equipment, updates, photos, documents, findings, allowed stages |
+| VacTech Manager | Work orders, equipment, customers, users, access requests; renaming, archiving and merging customers and pumps; the model catalog and its manuals |
+| VacTech Service User | Work orders, equipment (including corrections to a pump's details), updates, photos, documents, findings, allowed stages; reading manuals |
 | Customer User | Read-only customer-visible records for authorized company data |
 
 ## Rules
@@ -12,6 +12,7 @@
 - Every protected server request identifies an active user; disabled users lose access immediately.
 - Customer authorization comes from `UserAccess`, not a company ID from the browser.
 - Customer work-order reads require a company grant and filter all related updates, findings, attachments, documents, and activity to customer-visible content.
+- A customer's search only narrows their own records. Access rules and search terms are combined with AND, never spread into one filter object, because both are OR lists and one would replace the other.
 - Internal-only data is never serialized in a customer response, even when an identifier is guessed.
 - Pending access requests do not grant access. An administrator must assign company, role, and activation deliberately.
 - Inputs are validated server-side with Zod. Important administrative, work-order, update, and attachment activity is audited.
@@ -26,5 +27,7 @@ Employee roles are managed in the portal on the Users page. Microsoft Entra deci
 - Managers can change the roles and access of managers and service users. Only a portal administrator can change another administrator, and the last active administrator can't be demoted or disabled.
 
 ## File Access
+
+Model manuals follow the same rule: staff can download any of them, and a customer only one that is marked customer-visible for a model they have a pump of.
 
 Files remain private. The application authorizes the requesting user against the attachment's work order and visibility before returning a short-lived storage authorization or proxying content. Permanent public blob URLs are prohibited.

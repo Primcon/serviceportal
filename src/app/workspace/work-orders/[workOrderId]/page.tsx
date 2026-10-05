@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListKind, UserRole, WorkOrderCondition } from "@prisma/client";
-import { AlertTriangle, ArrowLeft, Camera, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpen, Camera, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { buttonStyles, fieldStyles, panelStyles } from "@/components/ui/styles";
 import { deleteDocument, updateDocumentVisibility } from "@/features/admin/actions";
+import { ModelDocumentList } from "@/features/catalog/components/model-document-list";
+import { modelDocuments } from "@/features/catalog/queries";
 import { createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
 import { DetailsEditor } from "@/features/work-orders/components/details-editor";
 import { PhotoGallery } from "@/features/work-orders/components/photo-gallery";
@@ -58,11 +60,12 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
   const workOrder = await getInternalWorkOrder(workOrderId);
   if (!workOrder) notFound();
 
-  const [stages, priorities, serviceTypes, centers, customerPortalUsers] = await Promise.all([
+  const [stages, priorities, serviceTypes, centers, manuals, customerPortalUsers] = await Promise.all([
     listActiveServiceStages(),
     listOptions(ListKind.PRIORITY),
     listOptions(ListKind.SERVICE_TYPE),
     serviceCenters(),
+    modelDocuments(workOrder.equipment.productModelId),
     prisma.userAccess.count({
       where: {
         companyId: workOrder.companyId,
@@ -102,7 +105,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
             </div>
             <h1 className="mt-2 text-3xl font-bold">{workOrder.summary}</h1>
             <p className="mt-2 text-muted">
-              {workOrder.company.name}{workOrder.location && ` · ${workOrder.location.name}`} · <Link className="font-bold text-ink hover:text-brand" href={`/workspace/equipment/${workOrder.equipment.id}`}>{workOrder.equipment.productModel} · Serial {workOrder.equipment.serialNumber}</Link>
+              {isManager ? <Link className="hover:text-brand" href={`/workspace/customers/${workOrder.companyId}`}>{workOrder.company.name}</Link> : workOrder.company.name}{workOrder.location && ` · ${workOrder.location.name}`} · <Link className="font-bold text-ink hover:text-brand" href={`/workspace/equipment/${workOrder.equipment.id}`}>{workOrder.equipment.productModel} · Serial {workOrder.equipment.serialNumber}</Link>
             </p>
           </div>
           <div className="flex flex-col items-start gap-3 sm:items-end">
@@ -249,7 +252,18 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
               </li>
             ))}
           </ul>
-        ) : <p className="mt-5 text-sm text-muted">No documents yet. Upload POs, quotes, invoices, reports and manuals here.</p>}
+        ) : <p className="mt-5 text-sm text-muted">No documents yet. Upload POs, quotes, invoices and reports for this job here.</p>}
+      </Section>
+
+      <Section
+        actions={workOrder.equipment.productModelId && <Link className="text-sm font-bold text-brand" href={`/workspace/models/${workOrder.equipment.productModelId}`}>{isManager ? "Manage this model's documents" : "Open model"}</Link>}
+        className="mt-6"
+        icon={<BookOpen className="text-brand" size={20} />}
+        title={`Manuals for ${workOrder.equipment.productModel}`}
+      >
+        {manuals.length
+          ? <ModelDocumentList documents={manuals} downloadPath="/api/internal/model-documents" showVisibility />
+          : <p className="text-sm text-muted">{workOrder.equipment.productModelId ? "No manuals have been added for this model yet." : "This pump isn't linked to a catalog model yet. Edit the pump to link it and see its manuals here."}</p>}
       </Section>
     </main>
   );

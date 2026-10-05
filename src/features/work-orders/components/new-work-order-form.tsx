@@ -3,30 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowUpRight, ClipboardPlus, PackagePlus, Search, X } from "lucide-react";
-import type { CopperClassification } from "@prisma/client";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { Field } from "@/components/ui/field";
 import { buttonStyles, fieldStyles, panelStyles } from "@/components/ui/styles";
+import { ModelFields } from "@/features/catalog/components/model-fields";
 import { openWorkOrder } from "@/features/work-orders/intake-actions";
+import type { PumpResult } from "@/features/work-orders/pump-search";
 import { copperClassificationLabels } from "@/lib/labels";
-
-type PumpResult = {
-  id: string;
-  productModel: string;
-  serialNumber: string;
-  companyName: string;
-  locationName: string | null;
-  openWorkOrder: { id: string; workOrderNumber: string } | null;
-  lastIntake: {
-    toolId: string | null;
-    oilType: string | null;
-    contaminants: string | null;
-    copperClassification: CopperClassification;
-    customerContactName: string | null;
-    customerContactPhone: string | null;
-    customerContactEmail: string | null;
-  } | null;
-};
 
 type Company = { id: string; name: string; locations: { id: string; name: string }[] };
 type Option = { id: string; label: string };
@@ -110,25 +93,25 @@ function PumpSearch({ selected, onSelect }: { selected: PumpResult | null; onSel
   );
 }
 
-export function NewWorkOrderForm({ companies, models, serviceCenters, priorities, serviceTypes }: {
+export function NewWorkOrderForm({ companies, models, serviceCenters, priorities, serviceTypes, nextNumber, initialPump = null }: {
   companies: Company[];
   models: Option[];
   serviceCenters: { id: string; code: string; name: string }[];
   priorities: Option[];
   serviceTypes: Option[];
+  nextNumber: number;
+  /** The pump to start with, when the form is opened from a pump's page. */
+  initialPump?: PumpResult | null;
 }) {
   const [pumpMode, setPumpMode] = useState<"existing" | "new">("existing");
-  const [pump, setPump] = useState<PumpResult | null>(null);
+  const [pump, setPump] = useState<PumpResult | null>(initialPump);
   const [companyId, setCompanyId] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [number, setNumber] = useState("");
   const [centerId, setCenterId] = useState(serviceCenters.length === 1 ? serviceCenters[0].id : "");
   const centerCode = serviceCenters.find((center) => center.id === centerId)?.code;
   const locations = companies.find((company) => company.id === companyId)?.locations ?? [];
   const intake = pumpMode === "existing" ? pump?.lastIntake : null;
   const intakePrefilled = Boolean(intake && Object.entries(intake).some(([key, fieldValue]) => fieldValue && !(key === "copperClassification" && fieldValue === "UNKNOWN")));
-  const trimmedNumber = number.trim().replace(/\s+/g, " ");
-  const previewNumber = trimmedNumber && centerCode && !new RegExp(`\\s${centerCode}$`, "i").test(trimmedNumber) ? `${trimmedNumber} ${centerCode}` : trimmedNumber;
+  const previewNumber = centerCode ? `${nextNumber} ${centerCode}` : String(nextNumber);
 
   return (
     <ActionFeedbackForm action={openWorkOrder} className="grid gap-6" successMessage="Work order opened.">
@@ -157,28 +140,16 @@ export function NewWorkOrderForm({ companies, models, serviceCenters, priorities
                 {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
               </select>
             </Field>
-            <Field htmlFor="new-model" label="Model">
-              <select className={fieldStyles} id="new-model" name="productModelId" onChange={(event) => setModelId(event.target.value)} value={modelId}>
-                <option value="">Choose model</option>
-                {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-                <option value="__new">+ Model not listed</option>
-              </select>
-            </Field>
             <Field htmlFor="new-serial" label="Serial number"><input className={fieldStyles} id="new-serial" maxLength={120} name="serialNumber" required /></Field>
-            {modelId === "__new" && (
-              <>
-                <Field htmlFor="new-manufacturer" label="Manufacturer" optional><input className={fieldStyles} id="new-manufacturer" maxLength={80} name="newManufacturer" placeholder="Edwards" /></Field>
-                <Field htmlFor="new-model-name" label="Model name"><input className={fieldStyles} id="new-model-name" maxLength={120} name="newModelName" placeholder="IL70N" required /></Field>
-              </>
-            )}
+            <ModelFields models={models} />
           </div>
         )}
       </Step>
 
       <Step number={2} title="Job">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field hint={previewNumber ? `Saved as WIP ${previewNumber}` : "The WIP number from the job order form."} htmlFor="wip-number" label="WIP number">
-            <input className={fieldStyles} id="wip-number" maxLength={40} name="number" onChange={(event) => setNumber(event.target.value)} placeholder="48366" required value={number} />
+          <Field hint="Assigned when you save. If someone else opens a job first, this one gets the next number." htmlFor="wip-number" label="WIP number">
+            <output className={`${fieldStyles} block bg-surface font-bold`} id="wip-number">{previewNumber}</output>
           </Field>
           <Field htmlFor="service-center" label="Service center" optional={serviceCenters.length === 0}>
             <select className={fieldStyles} id="service-center" name="serviceCenterId" onChange={(event) => setCenterId(event.target.value)} required={serviceCenters.length > 0} value={centerId}>

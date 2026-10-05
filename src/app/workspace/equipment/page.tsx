@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
+import { productModelOptions } from "@/features/catalog/queries";
 import { firstParam, pageFromParams, pageWindow, type SearchParams } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
@@ -41,27 +42,24 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
     } : {}),
   };
 
-  const [total, equipment, companies, locations, models, existingEquipment] = await Promise.all([
+  const [total, equipment, companies, locations, models] = await Promise.all([
     prisma.equipment.count({ where }),
     prisma.equipment.findMany({
       where,
       orderBy: { updatedAt: "desc" },
       ...pageWindow(page, pageSize),
-      select: { id: true, productModel: true, serialNumber: true, description: true, archivedAt: true, company: { select: { name: true } }, location: { select: { name: true } }, _count: { select: { workOrders: true } } },
+      select: { id: true, productModel: true, serialNumber: true, description: true, archivedAt: true, mergedIntoId: true, company: { select: { name: true } }, location: { select: { name: true } }, _count: { select: { workOrders: true } } },
     }),
-    prisma.company.findMany({ where: { archivedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.company.findMany({ where: { archivedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true, locations: { where: { archivedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } } } }),
     prisma.location.findMany({ where: { archivedAt: null }, orderBy: [{ company: { name: "asc" } }, { name: "asc" }], select: { id: true, name: true, company: { select: { name: true } } } }),
-    prisma.productModel.findMany({ where: { isActive: true }, orderBy: [{ manufacturer: "asc" }, { name: "asc" }], select: { id: true, manufacturer: true, name: true } }),
-    // Used by the add-equipment dialog to warn about duplicate serials. Milestone 3 replaces
-    // this with a server-side lookup so it doesn't load every pump.
-    prisma.equipment.findMany({ select: { id: true, companyId: true, productModel: true, serialNumber: true, company: { select: { name: true } }, location: { select: { name: true } } } }),
+    productModelOptions(),
   ]);
   const filtersApplied = Boolean(search || companyId || locationId || modelId || includeArchived);
 
   return (
     <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
       <PageHeader
-        actions={<EquipmentCreateForm companies={companies} existingEquipment={existingEquipment} locations={locations} />}
+        actions={<EquipmentCreateForm companies={companies} defaultCompanyId={companies.some((company) => company.id === companyId) ? companyId : ""} models={models} />}
         description="Find pumps by customer, location, model or serial number, then open their complete repair history."
         eyebrow="OPERATIONS"
         title="Equipment register"
@@ -75,7 +73,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
           <label className="sr-only" htmlFor="filter-company">Customer company</label>
           <select className={fieldStyles} defaultValue={companyId} id="filter-company" name="companyId"><option value="">All customers</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select>
           <label className="sr-only" htmlFor="filter-model">Model</label>
-          <select className={fieldStyles} defaultValue={modelId} id="filter-model" name="model"><option value="">All models</option>{models.map((model) => <option key={model.id} value={model.id}>{[model.manufacturer, model.name].filter(Boolean).join(" ")}</option>)}</select>
+          <select className={fieldStyles} defaultValue={modelId} id="filter-model" name="model"><option value="">All models</option>{models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}</select>
           <label className="sr-only" htmlFor="filter-location">Service location</label>
           <select className={fieldStyles} defaultValue={locationId} id="filter-location" name="locationId"><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.company.name} · {location.name}</option>)}</select>
           <div className="flex flex-wrap items-center gap-3 sm:col-span-2 xl:col-span-4">
@@ -91,7 +89,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
         {equipment.length ? equipment.map((item) => (
           <Link className="group grid gap-3 border-b border-line px-5 py-5 last:border-b-0 hover:bg-surface sm:grid-cols-[minmax(0,1fr)_auto]" href={`/workspace/equipment/${item.id}`} key={item.id}>
             <div className="min-w-0">
-              <p className="flex flex-wrap items-center gap-2 font-bold group-hover:text-brand">{item.productModel}{item.archivedAt && <Badge tone="neutral">Archived</Badge>}</p>
+              <p className="flex flex-wrap items-center gap-2 font-bold group-hover:text-brand">{item.productModel}{item.archivedAt && <Badge tone="neutral">{item.mergedIntoId ? "Merged duplicate" : "Archived"}</Badge>}</p>
               <p className="mt-1 text-sm text-muted">Serial {item.serialNumber} · {item.company.name}{item.location && ` · ${item.location.name}`}</p>
               {item.description && <p className="mt-2 text-sm text-body">{item.description}</p>}
             </div>
