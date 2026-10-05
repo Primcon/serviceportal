@@ -1,22 +1,80 @@
 import Link from "next/link";
-import { CustomerFacingStatus } from "@prisma/client";
-import { ArrowUpRight, Building2, ClipboardList, Inbox, Package, UsersRound } from "lucide-react";
-import { prisma } from "@/lib/prisma";
-import { customerStatusLabels } from "@/lib/labels";
+import { CalendarClock, ClipboardList, Hand, Hourglass, Inbox, KanbanSquare } from "lucide-react";
+import type { ReactNode } from "react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { buttonStyles } from "@/components/ui/styles";
+import { QueueList } from "@/features/work-orders/components/queue-list";
+import { openWorkOrders, queueCounts } from "@/features/work-orders/queue";
 import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
-export default async function WorkspacePage() {
-  await requireWorkspaceUser();
-  const [workOrderCounts, equipmentCount, customerCount, pendingAccessRequests, recentWorkOrders] = await Promise.all([
-    prisma.workOrder.groupBy({ by: ["customerFacingStatus"], _count: { _all: true } }),
-    prisma.equipment.count(),
-    prisma.company.count(),
-    prisma.accessRequest.count({ where: { status: "PENDING" } }),
-    prisma.workOrder.findMany({ orderBy: { updatedAt: "desc" }, take: 6, select: { id: true, workOrderNumber: true, summary: true, customerFacingStatus: true, company: { select: { name: true } }, equipment: { select: { productModel: true, serialNumber: true } }, serviceStage: { select: { displayName: true } } } }),
-  ]);
-  const counts = new Map(workOrderCounts.map((item) => [item.customerFacingStatus, item._count._all]));
+const queuePreview = 15;
 
-  return <main className="min-h-screen bg-surface text-ink"><div className="mx-auto max-w-7xl px-5 py-8 sm:px-8"><div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-7"><div><p className="text-sm font-bold tracking-[0.1em] text-brand">SERVICE OPERATIONS</p><h1 className="mt-2 text-3xl font-bold">Today&apos;s service work</h1><p className="mt-2 max-w-2xl text-muted">Review the active repair queue, then move into the customer, equipment, and work-order records that need attention.</p></div><Link className="flex items-center gap-2 bg-brand px-3 py-2.5 text-sm font-bold text-white" href="/workspace/work-orders/new"><ClipboardList size={16} /> New work order</Link></div><section aria-label="Operational summary" className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.values(CustomerFacingStatus).map((status) => <Link className="border border-line bg-paper p-5 hover:border-brand" href={`/workspace/work-orders?status=${status}`} key={status}><p className="text-sm font-bold text-muted">{customerStatusLabels[status]}</p><p className="mt-2 text-3xl font-bold text-brand">{counts.get(status) ?? 0}</p><p className="mt-1 text-sm text-muted">work orders</p></Link>)}</section><section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.8fr)]"><div className="border-y border-line bg-paper"><div className="flex items-center justify-between gap-4 border-b border-line px-5 py-4"><div><h2 className="font-bold">Recently updated</h2><p className="mt-1 text-sm text-muted">The latest activity across the service queue.</p></div><Link className="text-sm font-bold text-brand" href="/workspace/work-orders">All work orders</Link></div>{recentWorkOrders.length ? recentWorkOrders.map((workOrder) => <Link className="group grid gap-3 border-b border-line px-5 py-4 last:border-b-0 hover:bg-surface sm:grid-cols-[minmax(0,1fr)_auto]" href={`/workspace/work-orders/${workOrder.id}`} key={workOrder.id}><div><p className="text-sm font-bold text-brand">{workOrder.workOrderNumber}</p><h3 className="mt-1 font-bold group-hover:text-brand">{workOrder.summary}</h3><p className="mt-1 text-sm text-muted">{workOrder.company.name} · {workOrder.equipment.productModel} · {workOrder.equipment.serialNumber}</p></div><div className="flex items-start gap-2 text-sm"><div className="text-right"><p className="font-bold">{workOrder.serviceStage.displayName}</p><p className="mt-1 text-muted">{customerStatusLabels[workOrder.customerFacingStatus]}</p></div><ArrowUpRight className="text-brand" size={18} /></div></Link>) : <p className="px-5 py-12 text-center text-sm text-muted">New work orders will appear here as service begins.</p>}</div><aside className="grid content-start gap-3"><Link className="border border-line bg-paper p-5 hover:border-brand" href="/workspace/customers"><Building2 className="text-brand" size={20} /><p className="mt-4 font-bold">Customers and locations</p><p className="mt-1 text-sm text-muted">{customerCount} customer{customerCount === 1 ? "" : "s"} in the service directory.</p></Link><Link className="border border-line bg-paper p-5 hover:border-brand" href="/workspace/equipment"><Package className="text-brand" size={20} /><p className="mt-4 font-bold">Equipment</p><p className="mt-1 text-sm text-muted">{equipmentCount} asset{equipmentCount === 1 ? "" : "s"} with retained service history.</p></Link><Link className="border border-line bg-paper p-5 hover:border-brand" href="/workspace/access-requests"><Inbox className="text-danger" size={20} /><p className="mt-4 font-bold">Access requests</p><p className="mt-1 text-sm text-muted">{pendingAccessRequests} request{pendingAccessRequests === 1 ? "" : "s"} awaiting review.</p></Link><Link className="border border-line bg-paper p-5 hover:border-brand" href="/workspace/users"><UsersRound className="text-brand" size={20} /><p className="mt-4 font-bold">Users and access</p><p className="mt-1 text-sm text-muted">Manage account status, roles, and customer grants.</p></Link></aside></section></div></main>;
+function QueueSection({ title, description, count, href, children }: { title: string; description: string; count: number; href: string; children: ReactNode }) {
+  return (
+    <section className="border-y border-line bg-paper">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
+        <div><h2 className="font-bold">{title} <span className="font-normal text-muted">({count})</span></h2><p className="mt-0.5 text-sm text-muted">{description}</p></div>
+        {count > queuePreview && <Link className="text-sm font-bold text-brand" href={href}>See all {count}</Link>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export default async function WorkspacePage() {
+  const viewer = await requireWorkspaceUser();
+  const [counts, mine, unassigned] = await Promise.all([
+    queueCounts(viewer.id),
+    openWorkOrders({ assignedToId: viewer.id }, queuePreview),
+    openWorkOrders({ assignedToId: null }, queuePreview),
+  ]);
+  const tiles = [
+    { label: "With me", value: counts.mine, href: "/workspace/work-orders?assignee=me&open=1", icon: <Hand size={18} />, accent: true },
+    { label: "Waiting in the queue", value: counts.unassigned, href: "/workspace/work-orders?assignee=none&open=1", icon: <Inbox size={18} /> },
+    { label: "Past the promised date", value: counts.overdue, href: "/workspace/work-orders?overdue=1", icon: <CalendarClock size={18} />, danger: counts.overdue > 0 },
+    { label: "Waiting on parts or customer", value: counts.waiting, href: "/workspace/board", icon: <Hourglass size={18} /> },
+  ];
+
+  return (
+    <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
+      <PageHeader
+        actions={(
+          <>
+            <Link className={buttonStyles({ variant: "outline", size: "sm" })} href="/workspace/board"><KanbanSquare size={16} /> Stage board</Link>
+            <Link className={buttonStyles({ size: "sm" })} href="/workspace/work-orders/new"><ClipboardList size={16} /> New work order</Link>
+          </>
+        )}
+        description="The jobs that are with you, and the ones waiting for someone to pick them up."
+        eyebrow="SERVICE"
+        title="My work"
+      />
+
+      <section aria-label="Queue summary" className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {tiles.map((tile) => (
+          <Link className={`group border-l-4 bg-paper p-5 hover:border-brand ${tile.accent ? "border-brand" : "border-line"}`} href={tile.href} key={tile.label}>
+            <span className={tile.danger ? "text-danger" : "text-muted group-hover:text-brand"}>{tile.icon}</span>
+            <p className={`mt-3 text-3xl font-bold tabular-nums ${tile.danger ? "text-danger" : ""}`}>{tile.value}</p>
+            <p className="mt-1 text-sm text-muted">{tile.label}</p>
+          </Link>
+        ))}
+      </section>
+
+      <div className="mt-8 grid gap-6">
+        <QueueSection count={counts.mine} description="Open jobs handed to you or taken by you." href="/workspace/work-orders?assignee=me&open=1" title="With me">
+          {mine.length
+            ? <QueueList viewerId={viewer.id} workOrders={mine} />
+            : <div className="p-5"><EmptyState description="Take a job from the queue below, or open a new work order." icon={<Hand size={24} />} title="Nothing is with you right now." /></div>}
+        </QueueSection>
+
+        <QueueSection count={counts.unassigned} description="Open jobs nobody has yet, earliest stage first. Open one and choose Take it." href="/workspace/work-orders?assignee=none&open=1" title="Waiting in the queue">
+          {unassigned.length
+            ? <QueueList viewerId={viewer.id} workOrders={unassigned} />
+            : <div className="p-5"><EmptyState description="Every open job has an owner." icon={<Inbox size={24} />} title="The queue is empty." /></div>}
+        </QueueSection>
+      </div>
+    </main>
+  );
 }

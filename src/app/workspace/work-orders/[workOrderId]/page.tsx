@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListKind, UserRole, WorkOrderCondition } from "@prisma/client";
-import { AlertTriangle, ArrowLeft, BookOpen, Camera, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpen, Camera, Hand, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { buttonStyles, fieldStyles, panelStyles } from "@/components/ui/styles";
 import { deleteDocument, updateDocumentVisibility } from "@/features/admin/actions";
+import { assignWorkOrder } from "@/features/assignments/actions";
+import { assignableStaff } from "@/features/assignments/assign";
+import { wholeDaysSince } from "@/features/work-orders/queue";
 import { ModelDocumentList } from "@/features/catalog/components/model-document-list";
 import { modelDocuments } from "@/features/catalog/queries";
 import { createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
@@ -18,7 +21,7 @@ import { TimelineList } from "@/features/work-orders/components/timeline-list";
 import { getInternalWorkOrder, listActiveServiceStages } from "@/features/work-orders/internal-queries";
 import { buildTimeline } from "@/features/work-orders/timeline";
 import { listOptions, serviceCenters } from "@/features/settings/queries";
-import { copperClassificationLabels, customerStatusLabels, documentTypeLabels, formatEnumLabel } from "@/lib/labels";
+import { copperClassificationLabels, customerStatusLabels, documentTypeLabels, formatEnumLabel, isElevatedPriority } from "@/lib/labels";
 import { firstParam, type SearchParams } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
@@ -60,12 +63,13 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
   const workOrder = await getInternalWorkOrder(workOrderId);
   if (!workOrder) notFound();
 
-  const [stages, priorities, serviceTypes, centers, manuals, customerPortalUsers] = await Promise.all([
+  const [stages, priorities, serviceTypes, centers, manuals, staff, customerPortalUsers] = await Promise.all([
     listActiveServiceStages(),
     listOptions(ListKind.PRIORITY),
     listOptions(ListKind.SERVICE_TYPE),
     serviceCenters(),
     modelDocuments(workOrder.equipment.productModelId),
+    assignableStaff(),
     prisma.userAccess.count({
       where: {
         companyId: workOrder.companyId,
@@ -88,6 +92,9 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
     canDelete: isManager || photo.uploadedById === viewer.id,
   }));
   const documents = workOrder.attachments.filter((attachment) => attachment.kind === "DOCUMENT");
+  const isClosed = Boolean(workOrder.completedAt) || workOrder.condition === "CANCELLED";
+  const isMine = workOrder.assignedToId === viewer.id;
+  const daysInStage = wholeDaysSince(workOrder.stageEnteredAt);
   const handlingWarning = workOrder.copperClassification !== "UNKNOWN" || workOrder.contaminants;
 
   return (
@@ -99,7 +106,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-bold tracking-[0.1em] text-danger">{workOrder.workOrderNumber}</p>
-              {workOrder.priority && workOrder.priority !== "Standard" && <Badge tone="danger">{workOrder.priority}</Badge>}
+              {isElevatedPriority(workOrder.priority) && <Badge tone="danger">{workOrder.priority}</Badge>}
               {workOrder.serviceType && <Badge tone="outline">{workOrder.serviceType}</Badge>}
               {workOrder.condition !== "NORMAL" && <Badge tone="outline">{formatEnumLabel(workOrder.condition)}</Badge>}
             </div>
@@ -159,7 +166,21 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
 
         <aside className="grid content-start gap-6">
           <Section icon={<ClipboardCheck className="text-brand" size={20} />} title="Service state">
-            <ActionFeedbackForm action={updateWorkOrderStatus} className="grid gap-3" successMessage="Service state updated.">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-l-4 border-brand bg-surface px-4 py-3">
+              <div>
+                <p className="text-xs font-bold tracking-[0.08em] text-muted">WITH</p>
+                <p className="mt-0.5 font-bold">{isClosed ? "Nobody: this job is closed" : workOrder.assignedTo ? (isMine ? "You" : workOrder.assignedTo.displayName) : "Nobody yet: waiting in the queue"}</p>
+                {!isClosed && <p className="mt-0.5 text-xs text-muted">{daysInStage === 0 ? "Entered this stage today" : `${daysInStage} day${daysInStage === 1 ? "" : "s"} in this stage`}</p>}
+              </div>
+              {!isClosed && !isMine && (
+                <ActionFeedbackForm action={assignWorkOrder} className="flex flex-wrap items-center gap-2">
+                  <input name="workOrderId" type="hidden" value={workOrder.id} />
+                  <input name="assigneeId" type="hidden" value="me" />
+                  <button className={buttonStyles({ variant: "secondary", size: "sm" })}><Hand size={15} /> Take it</button>
+                </ActionFeedbackForm>
+              )}
+            </div>
+            <ActionFeedbackForm action={updateWorkOrderStatus} className="grid gap-3" key={`${workOrder.serviceStageId}:${workOrder.condition}:${workOrder.assignedToId}`} successMessage="Service state updated.">
               <input name="workOrderId" type="hidden" value={workOrder.id} />
               <Field htmlFor="service-stage" label="Stage">
                 <select className={fieldStyles} defaultValue={workOrder.serviceStageId} id="service-stage" name="serviceStageId">{stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.displayName}</option>)}</select>
@@ -167,7 +188,14 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
               <Field htmlFor="work-order-condition" label="Condition">
                 <select className={fieldStyles} defaultValue={workOrder.condition} id="work-order-condition" name="condition">{Object.values(WorkOrderCondition).map((condition) => <option key={condition} value={condition}>{formatEnumLabel(condition)}</option>)}</select>
               </Field>
-              <Field hint="Staff only. Say what was done or who picks it up next." htmlFor="status-note" label="Handoff note" optional>
+              <Field htmlFor="handoff" label="Hand to">
+                <select className={fieldStyles} defaultValue="keep" id="handoff" name="handoff">
+                  <option value="keep">{workOrder.assignedTo ? `Keep with ${isMine ? "me" : workOrder.assignedTo.displayName}` : "Leave in the queue"}</option>
+                  {workOrder.assignedTo && <option value="">The queue (nobody in particular)</option>}
+                  {staff.filter((person) => person.id !== workOrder.assignedToId).map((person) => <option key={person.id} value={person.id}>{person.id === viewer.id ? "Me" : person.displayName}</option>)}
+                </select>
+              </Field>
+              <Field hint="Staff only. Say what was done and what's next." htmlFor="status-note" label="Handoff note" optional>
                 <textarea className={fieldStyles} id="status-note" maxLength={1000} name="note" rows={2} />
               </Field>
               <button className={buttonStyles()}>Update state</button>

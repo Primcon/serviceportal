@@ -11,6 +11,8 @@ enum UserRole {
   PORTAL_ADMINISTRATOR
   VACTECH_MANAGER
   VACTECH_SERVICE_USER
+  /// Quality assurance: everything a service user can do, plus the sign-offs reserved for QA.
+  VACTECH_QA
   CUSTOMER_USER
 }
 
@@ -179,6 +181,9 @@ model User {
   updatedAt DateTime @updatedAt
   access UserAccess[]
   createdWork WorkOrder[] @relation("WorkOrderCreator")
+  assignedWork WorkOrder[] @relation("WorkOrderAssignee")
+  assignmentsReceived WorkOrderAssignment[] @relation("AssignmentRecipient")
+  assignmentsMade WorkOrderAssignment[] @relation("AssignmentAuthor")
   updates ServiceUpdate[]
   findings Finding[]
   attachments Attachment[]
@@ -320,6 +325,7 @@ model ServiceStage {
   updatedAt DateTime @updatedAt
   workOrders WorkOrder[]
   statusHistory WorkOrderStatusHistory[]
+  assignments WorkOrderAssignment[]
   attachments Attachment[]
 }
 
@@ -351,6 +357,10 @@ model WorkOrder {
   customerContactPhone String?
   customerContactEmail String?
   serviceStageId String @db.Uuid
+  /// When the work order entered its current stage, for "days in stage" on the queues.
+  stageEnteredAt DateTime @default(now())
+  /// The person the work order is with now. Empty means it's waiting in its stage's queue.
+  assignedToId String? @db.Uuid
   condition WorkOrderCondition @default(NORMAL)
   customerFacingStatus CustomerFacingStatus
   createdById String @db.Uuid
@@ -364,6 +374,8 @@ model WorkOrder {
   serviceCenter ServiceCenter? @relation(fields: [serviceCenterId], references: [id], onDelete: Restrict)
   serviceStage ServiceStage @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)
   createdBy User @relation("WorkOrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedTo User? @relation("WorkOrderAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
+  assignments WorkOrderAssignment[]
   statusHistory WorkOrderStatusHistory[]
   updates ServiceUpdate[]
   findings Finding[]
@@ -377,6 +389,23 @@ model WorkOrder {
   @@index([equipmentId, updatedAt])
   @@index([serviceStageId])
   @@index([locationId])
+  @@index([assignedToId])
+}
+
+/// Each time a work order changes hands: who it went to (or back to the queue), who did it, and the handoff note.
+model WorkOrderAssignment {
+  id String @id @default(uuid()) @db.Uuid
+  workOrderId String @db.Uuid
+  assignedToId String? @db.Uuid
+  assignedById String @db.Uuid
+  serviceStageId String @db.Uuid
+  note String?
+  createdAt DateTime @default(now())
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  assignedTo User? @relation("AssignmentRecipient", fields: [assignedToId], references: [id], onDelete: Restrict)
+  assignedBy User @relation("AssignmentAuthor", fields: [assignedById], references: [id], onDelete: Restrict)
+  serviceStage ServiceStage @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)
+  @@index([workOrderId, createdAt])
 }
 
 model WorkOrderStatusHistory {

@@ -1,7 +1,7 @@
 import { UserRole } from "@prisma/client";
-import { BookOpen, Building2, ClipboardList, FileSpreadsheet, Inbox, LayoutDashboard, Package, ScrollText, Settings, UsersRound, Workflow, type LucideIcon } from "lucide-react";
+import { BookOpen, Building2, ClipboardList, KanbanSquare, FileSpreadsheet, Inbox, LayoutDashboard, Package, ScrollText, Settings, UsersRound, Workflow, type LucideIcon } from "lucide-react";
 
-export const allInternalRoles: UserRole[] = [UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER, UserRole.VACTECH_SERVICE_USER];
+export const allInternalRoles: UserRole[] = [UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER, UserRole.VACTECH_QA, UserRole.VACTECH_SERVICE_USER];
 export const managerRoles: UserRole[] = [UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER];
 
 export type WorkspaceNavigationItem = {
@@ -20,7 +20,8 @@ export const workspaceNavigation: WorkspaceNavigationGroup[] = [
   {
     label: "Service",
     items: [
-      { href: "/workspace", label: "Overview", icon: LayoutDashboard, roles: allInternalRoles },
+      { href: "/workspace", label: "My work", icon: LayoutDashboard, roles: allInternalRoles },
+      { href: "/workspace/board", label: "Stage board", icon: KanbanSquare, roles: allInternalRoles },
       { href: "/workspace/work-orders", label: "Work orders", icon: ClipboardList, roles: allInternalRoles },
       { href: "/workspace/equipment", label: "Equipment", icon: Package, roles: allInternalRoles },
       { href: "/workspace/models", label: "Models and manuals", icon: BookOpen, roles: allInternalRoles },

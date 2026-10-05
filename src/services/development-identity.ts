@@ -27,6 +27,7 @@ const actors: Record<DevelopmentActorKind, DevelopmentActor> = {
 export function resolveDevelopmentInternalRole(value: string | undefined) {
   if (!value || value === UserRole.VACTECH_MANAGER) return UserRole.VACTECH_MANAGER;
   if (value === UserRole.PORTAL_ADMINISTRATOR) return UserRole.PORTAL_ADMINISTRATOR;
+  if (value === UserRole.VACTECH_QA) return UserRole.VACTECH_QA;
   if (value === UserRole.VACTECH_SERVICE_USER) return UserRole.VACTECH_SERVICE_USER;
   throw new Error(`Unsupported DEVELOPMENT_INTERNAL_ROLE: ${value}`);
 }

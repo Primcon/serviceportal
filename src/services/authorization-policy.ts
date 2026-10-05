@@ -4,6 +4,7 @@ import { AccessDeniedError } from "@/lib/errors";
 const internalRoles = new Set<UserRole>([
   UserRole.PORTAL_ADMINISTRATOR,
   UserRole.VACTECH_MANAGER,
+  UserRole.VACTECH_QA,
   UserRole.VACTECH_SERVICE_USER,
 ]);
 

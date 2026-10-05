@@ -75,7 +75,7 @@ export async function updateUserActiveStatus(formData: FormData): Promise<Action
 
 export async function updateInternalUserRole(formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
-    const input = z.object({ userId: requiredText, internalRole: z.enum(["PORTAL_ADMINISTRATOR", "VACTECH_MANAGER", "VACTECH_SERVICE_USER"]) }).parse({
+    const input = z.object({ userId: requiredText, internalRole: z.enum(["PORTAL_ADMINISTRATOR", "VACTECH_MANAGER", "VACTECH_QA", "VACTECH_SERVICE_USER"]) }).parse({
       userId: value(formData, "userId"),
       internalRole: value(formData, "internalRole"),
     });

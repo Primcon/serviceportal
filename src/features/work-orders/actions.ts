@@ -8,6 +8,7 @@ import type { ActionResult } from "@/lib/action-result";
 import { UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
 import { findOrCreateProductModel, modelDisplayName } from "@/features/work-orders/intake";
+import { setWorkOrderAssignee } from "@/features/assignments/assign";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
 import { detectDocumentType, supportedDocumentDescription } from "@/services/file-types";
@@ -180,12 +181,15 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
           "CANCELLED",
         ]),
         note: z.string().trim().max(1000).transform((note) => note || null),
+        // Who has it next: "keep" leaves the owner as is, "" returns it to the queue, otherwise a staff member.
+        handoff: z.string().uuid().or(z.literal("")).or(z.literal("keep")),
       })
       .parse({
         workOrderId: value(formData, "workOrderId"),
         serviceStageId: value(formData, "serviceStageId"),
         condition: value(formData, "condition"),
         note: value(formData, "note"),
+        handoff: formData.has("handoff") ? value(formData, "handoff") : "keep",
       });
     const internalUser = await getActiveInternalUser();
     await getAuthorizedWorkOrder(input.workOrderId);
@@ -200,12 +204,18 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
     const changed = await prisma.$transaction(async (transaction) => {
       const workOrder = await transaction.workOrder.findUniqueOrThrow({
         where: { id: input.workOrderId },
-        select: { companyId: true, workOrderNumber: true, serviceStageId: true, condition: true, customerFacingStatus: true, completedAt: true },
+        select: { companyId: true, workOrderNumber: true, serviceStageId: true, condition: true, customerFacingStatus: true, completedAt: true, assignedToId: true },
       });
-      if (workOrder.serviceStageId === stage.id && workOrder.condition === input.condition) {
-        return false;
-      }
       const isCompleted = stage.code === "COMPLETED";
+      // A finished or cancelled job isn't anyone's work any more.
+      const nextAssigneeId = isCompleted || input.condition === "CANCELLED" ? null : input.handoff === "keep" ? workOrder.assignedToId : input.handoff || null;
+      const stateChanged = workOrder.serviceStageId !== stage.id || workOrder.condition !== input.condition;
+      if (!stateChanged) {
+        // Only the owner changed: record the handoff (with the note) and leave the stage history alone.
+        if (nextAssigneeId === workOrder.assignedToId) return false;
+        await setWorkOrderAssignee(transaction, { workOrderId: input.workOrderId, assigneeId: nextAssigneeId, actorUserId: internalUser.id, note: input.note });
+        return true;
+      }
       await transaction.workOrder.update({
         where: { id: input.workOrderId },
         data: {
@@ -213,8 +223,13 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
           customerFacingStatus: stage.customerFacingStatus,
           condition: input.condition,
           completedAt: isCompleted ? workOrder.completedAt ?? new Date() : null,
+          ...(workOrder.serviceStageId !== stage.id ? { stageEnteredAt: new Date() } : {}),
         },
       });
+      if (nextAssigneeId !== workOrder.assignedToId) {
+        // The note is already on the stage change, so the handoff record doesn't repeat it.
+        await setWorkOrderAssignee(transaction, { workOrderId: input.workOrderId, assigneeId: nextAssigneeId, actorUserId: internalUser.id, note: null });
+      }
       const statusHistory = await transaction.workOrderStatusHistory.create({
         data: {
           workOrderId: input.workOrderId,
@@ -244,9 +259,8 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
       return true;
     });
 
-    revalidatePath("/workspace");
+    revalidatePath("/workspace", "layout");
     revalidatePath("/portal");
-    revalidatePath(`/workspace/work-orders/${input.workOrderId}`);
     return changed ? "Service state updated." : "The stage and condition are unchanged. Use a note to add information.";
   });
 }

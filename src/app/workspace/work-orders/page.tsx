@@ -9,9 +9,11 @@ import { Pagination } from "@/components/ui/pagination";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
 import { workOrderSearchWhere } from "@/features/search/queries";
 import { listOptions, serviceCenters } from "@/features/settings/queries";
-import { customerStatusLabels, formatEnumLabel } from "@/lib/labels";
+import { customerStatusLabels, formatEnumLabel, isElevatedPriority } from "@/lib/labels";
 import { firstParam, pageFromParams, pageWindow, type SearchParams } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import { assignableStaff } from "@/features/assignments/assign";
+import { openWorkOrderWhere } from "@/features/records/merge";
 import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +25,7 @@ function oneOf<T extends string>(values: T[], value: string | undefined) {
 }
 
 export default async function WorkOrdersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  await requireWorkspaceUser();
+  const viewer = await requireWorkspaceUser();
   const params = await searchParams;
   const search = firstParam(params.search)?.trim() ?? "";
   const status = oneOf(Object.values(CustomerFacingStatus), firstParam(params.status));
@@ -33,9 +35,18 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
   const priority = firstParam(params.priority) ?? "";
   // Set by the links on a customer's page, to show only that customer's work orders.
   const companyId = z.string().uuid().safeParse(firstParam(params.company)).data;
+  // Who has the job: "me", "none" (waiting in the queue), or a staff member's ID.
+  const assignee = firstParam(params.assignee) ?? "";
+  const assigneeId = assignee === "me" ? viewer.id : z.string().uuid().safeParse(assignee).data;
+  const openOnly = firstParam(params.open) === "1";
+  const overdueOnly = firstParam(params.overdue) === "1";
+  const now = new Date();
   const page = pageFromParams(params);
 
   const where: Prisma.WorkOrderWhereInput = {
+    ...(openOnly || overdueOnly ? openWorkOrderWhere : {}),
+    ...(overdueOnly ? { promisedAt: { lt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) } } : {}),
+    ...(assignee === "none" ? { assignedToId: null } : assigneeId ? { assignedToId: assigneeId } : {}),
     ...(status ? { customerFacingStatus: status } : {}),
     ...(condition ? { condition } : {}),
     ...(stageId ? { serviceStageId: stageId } : {}),
@@ -45,7 +56,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
     ...(search ? workOrderSearchWhere(search) : {}),
   };
 
-  const [total, workOrders, stages, centers, priorities, company] = await Promise.all([
+  const [total, workOrders, stages, centers, priorities, company, staff] = await Promise.all([
     prisma.workOrder.count({ where }),
     prisma.workOrder.findMany({
       where,
@@ -62,14 +73,16 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
         company: { select: { name: true } },
         equipment: { select: { productModel: true, serialNumber: true } },
         serviceStage: { select: { displayName: true } },
+        assignedTo: { select: { id: true, displayName: true } },
       },
     }),
     prisma.serviceStage.findMany({ where: { isActive: true }, orderBy: { sequence: "asc" }, select: { id: true, displayName: true } }),
     serviceCenters(),
     listOptions(ListKind.PRIORITY),
     companyId ? prisma.company.findUnique({ where: { id: companyId }, select: { name: true } }) : null,
+    assignableStaff(),
   ]);
-  const filtersApplied = Boolean(search || status || condition || stageId || centerId || priority || companyId);
+  const filtersApplied = Boolean(search || status || condition || stageId || centerId || priority || companyId || assignee || openOnly || overdueOnly);
   const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 
   return (
@@ -102,7 +115,16 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
           )}
           <label className="sr-only" htmlFor="work-order-priority">Priority</label>
           <select className={fieldStyles} defaultValue={priority} id="work-order-priority" name="priority"><option value="">All priorities</option>{priorities.map((option) => <option key={option.id} value={option.label}>{option.label}</option>)}</select>
-          <div className="flex gap-2 sm:col-span-2 lg:col-span-4 xl:col-span-7">
+          <label className="sr-only" htmlFor="work-order-assignee">Who has it</label>
+          <select className={fieldStyles} defaultValue={assignee} id="work-order-assignee" name="assignee">
+            <option value="">Anyone</option>
+            <option value="me">With me</option>
+            <option value="none">In the queue (nobody)</option>
+            {staff.filter((person) => person.id !== viewer.id).map((person) => <option key={person.id} value={person.id}>{person.displayName}</option>)}
+          </select>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:col-span-2 lg:col-span-4 xl:col-span-7">
+            <label className="flex items-center gap-2 text-sm text-muted"><input className="size-4 accent-brand" defaultChecked={openOnly} name="open" type="checkbox" value="1" /> Open jobs only</label>
+            <label className="flex items-center gap-2 text-sm text-muted"><input className="size-4 accent-brand" defaultChecked={overdueOnly} name="overdue" type="checkbox" value="1" /> Past the promised date</label>
             <button className={buttonStyles({ size: "sm" })}>Apply filters</button>
             {filtersApplied && <Link className={buttonStyles({ variant: "outline", size: "sm" })} href="/workspace/work-orders">Reset</Link>}
             <p className="ml-auto self-center text-sm font-bold text-muted">{total} work order{total === 1 ? "" : "s"}</p>
@@ -116,7 +138,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-bold text-brand">{workOrder.workOrderNumber}</p>
-                {workOrder.priority && workOrder.priority !== "Standard" && <Badge tone="danger">{workOrder.priority}</Badge>}
+                {isElevatedPriority(workOrder.priority) && <Badge tone="danger">{workOrder.priority}</Badge>}
                 {workOrder.condition !== "NORMAL" && <Badge tone="outline">{formatEnumLabel(workOrder.condition)}</Badge>}
               </div>
               <h2 className="mt-1 text-lg font-bold group-hover:text-brand">{workOrder.summary}</h2>
@@ -126,6 +148,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
               <div>
                 <p className="font-bold">{workOrder.serviceStage.displayName}</p>
                 <p className="mt-1 text-sm text-muted">{customerStatusLabels[workOrder.customerFacingStatus]}{workOrder.promisedAt && ` · Promised ${dateFormat.format(workOrder.promisedAt)}`}</p>
+                {workOrder.assignedTo && <p className="mt-1 text-sm text-muted">With {workOrder.assignedTo.id === viewer.id ? "you" : workOrder.assignedTo.displayName}</p>}
               </div>
               <ArrowUpRight className="mt-1 text-brand" size={18} />
             </div>

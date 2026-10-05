@@ -14,8 +14,9 @@ export function formatEnumLabel(value: string) {
 
 export const roleLabels: Record<UserRole, string> = {
   PORTAL_ADMINISTRATOR: "Portal administrator",
-  VACTECH_MANAGER: "VacTech manager",
-  VACTECH_SERVICE_USER: "VacTech service user",
+  VACTECH_MANAGER: "Manager",
+  VACTECH_QA: "Quality assurance",
+  VACTECH_SERVICE_USER: "Technician",
   CUSTOMER_USER: "Customer user",
 };
 
@@ -52,3 +53,8 @@ export const copperClassificationLabels: Record<CopperClassification, string> = 
   COPPER: "Copper",
   NON_COPPER: "Non-copper",
 };
+
+/** True for a priority worth flagging on a list. The everyday values ("Standard", or "Normal" on older records) aren't. */
+export function isElevatedPriority(priority: string | null) {
+  return Boolean(priority) && !["standard", "normal"].includes(priority!.trim().toLowerCase());
+}
