@@ -121,7 +121,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ compa
                 );
               })}
             </ul>
-          ) : <p className="mt-3 text-sm text-muted">No locations yet. Add one to organize this customer&apos;s pumps by site.</p>}
+          ) : <p className="mt-3 text-sm text-muted">{isMerged ? "Its locations moved to the customer it was merged into." : "No locations yet. Add one to organize this customer's pumps by site."}</p>}
         </section>
 
         <section className={panelStyles}>
