@@ -30,18 +30,22 @@ export async function listCustomerWorkOrders(
   const status = Object.values(CustomerFacingStatus).includes(filters.status as CustomerFacingStatus)
     ? (filters.status as CustomerFacingStatus)
     : undefined;
+  // The access rule and the search are both OR lists, so they're combined with AND. Spreading
+  // them into one object would let the search replace the access rule.
   const where: Prisma.WorkOrderWhereInput = {
-    ...customerWorkOrderAccessWhere(userId),
+    AND: [
+      customerWorkOrderAccessWhere(userId),
+      ...(search ? [{
+        OR: [
+          { workOrderNumber: { contains: search, mode: "insensitive" as const } },
+          { summary: { contains: search, mode: "insensitive" as const } },
+          { customerPurchaseOrder: { contains: search, mode: "insensitive" as const } },
+          { equipment: { productModel: { contains: search, mode: "insensitive" as const } } },
+          { equipment: { serialNumber: { contains: search, mode: "insensitive" as const } } },
+        ],
+      }] : []),
+    ],
     ...(status ? { customerFacingStatus: status } : {}),
-    ...(search ? {
-      OR: [
-        { workOrderNumber: { contains: search, mode: "insensitive" } },
-        { summary: { contains: search, mode: "insensitive" } },
-        { customerPurchaseOrder: { contains: search, mode: "insensitive" } },
-        { equipment: { productModel: { contains: search, mode: "insensitive" } } },
-        { equipment: { serialNumber: { contains: search, mode: "insensitive" } } },
-      ],
-    } : {}),
   };
 
   const [total, workOrders] = await Promise.all([
@@ -205,14 +209,17 @@ export async function listCustomerEquipment(identitySubject: string, search = ""
   const userId = await activeCustomerId(identitySubject);
   if (!userId) return { equipment: [], total: 0, page: currentPage, pageSize };
 
+  // Combined with AND for the same reason as the work order list above.
   const where: Prisma.EquipmentWhereInput = {
-    ...customerEquipmentAccessWhere(userId),
-    ...(search.trim() ? {
-      OR: [
-        { productModel: { contains: search.trim(), mode: "insensitive" } },
-        { serialNumber: { contains: search.trim(), mode: "insensitive" } },
-      ],
-    } : {}),
+    AND: [
+      customerEquipmentAccessWhere(userId),
+      ...(search.trim() ? [{
+        OR: [
+          { productModel: { contains: search.trim(), mode: "insensitive" as const } },
+          { serialNumber: { contains: search.trim(), mode: "insensitive" as const } },
+        ],
+      }] : []),
+    ],
   };
   const [total, equipment] = await Promise.all([prisma.equipment.count({ where }), prisma.equipment.findMany({
     where,

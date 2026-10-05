@@ -108,6 +108,18 @@ describe("customer query authorization", () => {
     expect(workOrders.some((workOrder) => workOrder.id === otherWorkOrderId)).toBe(false);
   });
 
+  it("keeps other customers' records out of search results", async () => {
+    const workOrders = await listCustomerWorkOrders(customerIdentitySubject, { search: "PRIVATE" });
+    expect(workOrders).toMatchObject({ workOrders: [], total: 0 });
+    const equipment = await listCustomerEquipment(customerIdentitySubject, "PRIVATE");
+    expect(equipment).toMatchObject({ equipment: [], total: 0 });
+
+    const ownWorkOrders = await listCustomerWorkOrders(customerIdentitySubject, { search: "authorized repair" });
+    expect(ownWorkOrders.workOrders.map((workOrder) => workOrder.id)).toEqual([workOrderId]);
+    const ownEquipment = await listCustomerEquipment(customerIdentitySubject, "visible");
+    expect(ownEquipment.equipment.map((item) => item.id)).toEqual([equipmentId]);
+  });
+
   it("rejects equipment and work orders at other locations in the same company", async () => {
     const { equipment } = await listCustomerEquipment(customerIdentitySubject);
     expect(equipment).toHaveLength(1);
