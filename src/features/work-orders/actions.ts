@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/lib/action-result";
 import { UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
+import { findOrCreateProductModel, modelDisplayName } from "@/features/work-orders/intake";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
 import { detectDocumentType, detectPhotoType, supportedDocumentDescription, supportedPhotoDescription } from "@/services/file-types";
@@ -113,31 +114,38 @@ export async function createLocation(formData: FormData): Promise<ActionResult> 
   });
 }
 
+/** Adds a pump to a customer's register, linked to a catalog model (added to the catalog if it's new). */
 export async function createEquipment(formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
     const input = z
       .object({
-        companyId: requiredText,
+        companyId: z.string().uuid("Choose the customer."),
         locationId: z.string().trim(),
-        productModel: requiredText,
-        serialNumber: requiredText,
-        description: z.string().trim(),
+        // "__new" is the form's "model not listed" choice; the new model's name comes from the fields below.
+        productModelId: z.string().trim().uuid().or(z.literal("")).or(z.literal("__new")).transform((id) => (id && id !== "__new" ? id : null)),
+        newManufacturer: z.string().trim().max(80),
+        newModelName: z.string().trim().max(120),
+        serialNumber: z.string().trim().min(1).max(120),
+        description: z.string().trim().max(500),
       })
       .parse({
         companyId: value(formData, "companyId"),
         locationId: value(formData, "locationId"),
-        productModel: value(formData, "productModel"),
+        productModelId: value(formData, "productModelId"),
+        newManufacturer: value(formData, "newManufacturer"),
+        newModelName: value(formData, "newModelName"),
         serialNumber: value(formData, "serialNumber"),
         description: value(formData, "description"),
       });
+    if (!input.productModelId && !input.newModelName) throw new UserFacingError("Choose the pump's model, or enter a new one.");
     const internalUser = await getActiveInternalUser();
 
     await prisma.$transaction(async (transaction) => {
-      const company = await transaction.company.findUnique({ where: { id: input.companyId }, select: { id: true } });
-      if (!company) throw new UserFacingError("Company not found.");
+      const company = await transaction.company.findFirst({ where: { id: input.companyId, archivedAt: null }, select: { id: true } });
+      if (!company) throw new UserFacingError("Customer not found.");
       if (input.locationId) {
         const location = await transaction.location.findFirst({ where: { id: input.locationId, companyId: input.companyId }, select: { id: true } });
-        if (!location) throw new UserFacingError("Location does not belong to the selected company.");
+        if (!location) throw new UserFacingError("That location belongs to a different customer.");
       }
       const existingEquipment = await transaction.equipment.findFirst({
         where: {
@@ -147,19 +155,26 @@ export async function createEquipment(formData: FormData): Promise<ActionResult>
         select: { id: true },
       });
       if (existingEquipment) {
-        throw new UserFacingError("Equipment with this serial number already exists for the selected company.");
+        throw new UserFacingError("This customer already has a pump with that serial number.");
       }
+      const model = input.productModelId
+        ? await transaction.productModel.findUnique({ where: { id: input.productModelId } })
+        : await findOrCreateProductModel(transaction, input.newManufacturer || null, input.newModelName);
+      if (!model) throw new UserFacingError("Model not found.");
       const equipment = await transaction.equipment.create({
         data: {
-          ...input,
           companyId: company.id,
           locationId: input.locationId || null,
+          productModelId: model.id,
+          productModel: modelDisplayName(model.manufacturer, model.name),
+          serialNumber: input.serialNumber,
           description: input.description || null,
         },
       });
       await recordAudit(transaction, { actorUserId: internalUser.id, eventType: "equipment.created", entityType: "Equipment", entityId: equipment.id });
     });
-    revalidatePath("/workspace");
+    revalidatePath("/workspace", "layout");
+    return "Pump added.";
   });
 }
 

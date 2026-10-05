@@ -110,7 +110,7 @@ describe("work order numbering", () => {
 describe("workspace navigation", () => {
   it("shows service users only the service pages, and managers everything", () => {
     const serviceUserPages = navigationForRole(UserRole.VACTECH_SERVICE_USER).flatMap((group) => group.items.map((item) => item.href));
-    expect(serviceUserPages).toEqual(["/workspace", "/workspace/work-orders", "/workspace/equipment"]);
+    expect(serviceUserPages).toEqual(["/workspace", "/workspace/work-orders", "/workspace/equipment", "/workspace/models"]);
     const managerPages = navigationForRole(UserRole.VACTECH_MANAGER).flatMap((group) => group.items.map((item) => item.href));
     expect(managerPages).toContain("/workspace/settings");
     expect(navigationForRole(null)).toEqual([]);

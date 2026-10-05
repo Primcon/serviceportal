@@ -1,28 +1,34 @@
 import Link from "next/link";
 import { ListKind } from "@prisma/client";
 import { ArrowLeft } from "lucide-react";
+import { z } from "zod";
 import { PageHeader } from "@/components/ui/page-header";
 import { NewWorkOrderForm } from "@/features/work-orders/components/new-work-order-form";
-import { modelDisplayName } from "@/features/work-orders/intake";
+import { productModelOptions } from "@/features/catalog/queries";
+import { findPumps } from "@/features/work-orders/pump-search";
 import { listOptions, serviceCenters, workOrderNumbering } from "@/features/settings/queries";
+import { firstParam, type SearchParams } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewWorkOrderPage() {
+export default async function NewWorkOrderPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireWorkspaceUser();
-  const [companies, models, centers, priorities, serviceTypes, numbering] = await Promise.all([
+  // Opened from a pump's page, the form starts with that pump chosen.
+  const equipmentId = z.string().uuid().safeParse(firstParam((await searchParams).equipmentId)).data;
+  const [companies, models, centers, priorities, serviceTypes, numbering, initialPumps] = await Promise.all([
     prisma.company.findMany({
       where: { archivedAt: null },
       orderBy: { name: "asc" },
       select: { id: true, name: true, locations: { where: { archivedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } } },
     }),
-    prisma.productModel.findMany({ where: { isActive: true }, orderBy: [{ manufacturer: "asc" }, { name: "asc" }], select: { id: true, manufacturer: true, name: true } }),
+    productModelOptions(),
     serviceCenters(),
     listOptions(ListKind.PRIORITY),
     listOptions(ListKind.SERVICE_TYPE),
     workOrderNumbering(),
+    equipmentId ? findPumps({ id: equipmentId, archivedAt: null }, 1) : [],
   ]);
 
   return (
@@ -34,7 +40,8 @@ export default async function NewWorkOrderPage() {
       <div className="mt-6">
         <NewWorkOrderForm
           companies={companies}
-          models={models.map((model) => ({ id: model.id, label: modelDisplayName(model.manufacturer, model.name) }))}
+          initialPump={initialPumps[0] ?? null}
+          models={models}
           nextNumber={numbering.next}
           priorities={priorities}
           serviceCenters={centers}

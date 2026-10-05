@@ -2,6 +2,7 @@ import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaClient, UserRole } from "@prisma/client";
 import { deleteModelDocument, mergeProductModels, saveProductModel, updateModelDocument, uploadModelDocument } from "@/features/catalog/actions";
+import { findCustomerModelDocument } from "@/features/catalog/queries";
 import { deletePrivateFile, storePrivateBuffer } from "@/services/private-storage";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -85,6 +86,29 @@ describe("the model catalog", () => {
     await expect(deleteModelDocument(form({ documentId: document.id }))).resolves.toEqual({ status: "success", message: "Document deleted." });
     expect(await prisma.modelDocument.findUnique({ where: { id: document.id } })).toBeNull();
     expect(vi.mocked(deletePrivateFile)).toHaveBeenCalledWith(document.storageKey);
+  });
+
+  it("lets a customer download only shared documents for a model they have a pump of", async () => {
+    await saveProductModel(form({ manufacturer: "Edwards", name: `GX ${suffix}` }));
+    const gx = await model("GX");
+    await prisma.equipment.create({ data: { companyId, productModelId: gx.id, productModel: `Edwards GX ${suffix}`, serialNumber: `GX-${suffix}` } });
+    await uploadModelDocument(form({ modelId: gx.id, title: "Shared manual", visibility: "CUSTOMER_VISIBLE", file: pdf() }));
+    await uploadModelDocument(form({ modelId: gx.id, title: "Service bulletin", file: pdf() }));
+    const [shared, internal] = await Promise.all([
+      prisma.modelDocument.findFirstOrThrow({ where: { productModelId: gx.id, title: "Shared manual" } }),
+      prisma.modelDocument.findFirstOrThrow({ where: { productModelId: gx.id, title: "Service bulletin" } }),
+    ]);
+    const [owner, stranger] = await Promise.all(["owner", "stranger"].map((label) => prisma.user.create({ data: { identitySubject: `catalog:${label}:${suffix}`, email: `catalog-${label}-${suffix}@test.invalid`, displayName: label } })));
+    await prisma.userAccess.create({ data: { userId: owner.id, companyId, role: "CUSTOMER_USER", scope: "COMPANY" } });
+
+    try {
+      await expect(findCustomerModelDocument(owner.id, shared.id)).resolves.toMatchObject({ fileName: "IL70N manual.pdf" });
+      await expect(findCustomerModelDocument(owner.id, internal.id)).resolves.toBeNull();
+      await expect(findCustomerModelDocument(stranger.id, shared.id)).resolves.toBeNull();
+    } finally {
+      await prisma.userAccess.deleteMany({ where: { userId: owner.id } });
+      await prisma.user.deleteMany({ where: { id: { in: [owner.id, stranger.id] } } });
+    }
   });
 
   it("is limited to managers and administrators", async () => {

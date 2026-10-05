@@ -10,7 +10,7 @@ export async function getInternalWorkOrder(workOrderId: string) {
     include: {
       company: { select: { id: true, name: true } },
       location: { select: { name: true } },
-      equipment: { select: { id: true, productModel: true, serialNumber: true } },
+      equipment: { select: { id: true, productModelId: true, productModel: true, serialNumber: true } },
       serviceCenter: { select: { id: true, code: true, name: true } },
       serviceStage: { select: { displayName: true, code: true } },
       createdBy: { select: { displayName: true } },
@@ -76,10 +76,17 @@ export async function getInternalEquipment(equipmentId: string) {
   return prisma.equipment.findUnique({
     where: { id: equipmentId },
     select: {
+      id: true,
+      companyId: true,
+      productModelId: true,
       productModel: true,
       serialNumber: true,
       description: true,
-      company: { select: { name: true } },
+      archivedAt: true,
+      company: { select: { id: true, name: true, locations: { where: { archivedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } } } },
+      location: { select: { id: true, name: true } },
+      mergedInto: { select: { id: true, productModel: true, serialNumber: true } },
+      mergedFrom: { orderBy: { serialNumber: "asc" }, select: { id: true, serialNumber: true } },
       workOrders: {
         orderBy: { updatedAt: "desc" },
         select: {
@@ -87,6 +94,9 @@ export async function getInternalEquipment(equipmentId: string) {
           workOrderNumber: true,
           summary: true,
           condition: true,
+          customerFacingStatus: true,
+          receivedAt: true,
+          completedAt: true,
           updatedAt: true,
           serviceStage: { select: { displayName: true } },
         },

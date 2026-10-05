@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { DocumentType, RecordVisibility } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -84,7 +85,8 @@ export async function saveProductModel(formData: FormData): Promise<ActionResult
 
 /** Merges a duplicate catalog model into the one being kept: its pumps and documents move across, then it's removed. */
 export async function mergeProductModels(formData: FormData): Promise<ActionResult> {
-  return runAction(async () => {
+  let keptId = "";
+  const result = await runAction(async () => {
     const input = z.object({ duplicateId: id, keepId: z.string().uuid("Choose the model to keep.") }).parse({ duplicateId: value(formData, "duplicateId"), keepId: value(formData, "keepId") });
     if (input.duplicateId === input.keepId) throw new UserFacingError("Choose a different model to merge into.");
     const actor = await getActiveInternalUserForRoles(managerRoles);
@@ -108,8 +110,12 @@ export async function mergeProductModels(formData: FormData): Promise<ActionResu
       return pumps.count;
     });
     revalidateCatalog();
+    keptId = input.keepId;
     return `Merged. ${moved} pump${moved === 1 ? "" : "s"} moved.`;
   });
+  // The duplicate's page no longer exists, so the dialog asks to land on the model that was kept.
+  if (result.status === "success" && keptId && value(formData, "redirect") === "1") redirect(`/workspace/models/${keptId}`);
+  return result;
 }
 
 /** Attaches a manual or other document to a model, for every pump of that model. */

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { z } from "zod";
 import { CustomerFacingStatus, ListKind, Prisma, WorkOrderCondition } from "@prisma/client";
 import { ArrowUpRight, ClipboardList, Plus, SlidersHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,8 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
   const stageId = firstParam(params.stage) ?? "";
   const centerId = firstParam(params.center) ?? "";
   const priority = firstParam(params.priority) ?? "";
+  // Set by the links on a customer's page, to show only that customer's work orders.
+  const companyId = z.string().uuid().safeParse(firstParam(params.company)).data;
   const page = pageFromParams(params);
 
   const where: Prisma.WorkOrderWhereInput = {
@@ -38,10 +41,11 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
     ...(stageId ? { serviceStageId: stageId } : {}),
     ...(centerId ? { serviceCenterId: centerId } : {}),
     ...(priority ? { priority } : {}),
+    ...(companyId ? { companyId } : {}),
     ...(search ? workOrderSearchWhere(search) : {}),
   };
 
-  const [total, workOrders, stages, centers, priorities] = await Promise.all([
+  const [total, workOrders, stages, centers, priorities, company] = await Promise.all([
     prisma.workOrder.count({ where }),
     prisma.workOrder.findMany({
       where,
@@ -63,8 +67,9 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
     prisma.serviceStage.findMany({ where: { isActive: true }, orderBy: { sequence: "asc" }, select: { id: true, displayName: true } }),
     serviceCenters(),
     listOptions(ListKind.PRIORITY),
+    companyId ? prisma.company.findUnique({ where: { id: companyId }, select: { name: true } }) : null,
   ]);
-  const filtersApplied = Boolean(search || status || condition || stageId || centerId || priority);
+  const filtersApplied = Boolean(search || status || condition || stageId || centerId || priority || companyId);
   const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 
   return (
@@ -78,7 +83,9 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
 
       <section aria-label="Work-order filters" className="mt-6 border border-line bg-paper p-5">
         <div className="flex items-center gap-2 text-sm font-bold text-body"><SlidersHorizontal className="text-brand" size={17} /> Filter queue</div>
+        {company && <p className="mt-3 text-sm">Showing work orders for <span className="font-bold">{company.name}</span>. <Link className="font-bold text-brand" href="/workspace/work-orders">Show all customers</Link></p>}
         <form className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7" method="get">
+          {companyId && <input name="company" type="hidden" value={companyId} />}
           <label className="sr-only" htmlFor="work-order-search">Search work orders</label>
           <input className={`${fieldStyles} xl:col-span-2`} defaultValue={search} id="work-order-search" name="search" placeholder="WIP, serial, PO, customer..." />
           <label className="sr-only" htmlFor="customer-status">Customer status</label>

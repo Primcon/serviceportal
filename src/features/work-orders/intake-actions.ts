@@ -77,8 +77,9 @@ export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
         await recordAudit(transaction, { actorUserId: user.id, eventType: "equipment.created", entityType: "Equipment", entityId: created.id, metadata: { from: "work-order-intake" } });
         equipment = created;
       } else {
-        const found = await transaction.equipment.findUnique({ where: { id: existingEquipmentId! }, select: { id: true, companyId: true, locationId: true } });
+        const found = await transaction.equipment.findUnique({ where: { id: existingEquipmentId! }, select: { id: true, companyId: true, locationId: true, archivedAt: true } });
         if (!found) throw new UserFacingError("Pump not found.");
+        if (found.archivedAt) throw new UserFacingError("This pump is archived. Restore it on its page before opening a work order.");
         equipment = found;
       }
 

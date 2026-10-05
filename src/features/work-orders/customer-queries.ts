@@ -182,6 +182,8 @@ export async function getCustomerEquipment(
   return prisma.equipment.findFirst({
     where: {
       id: equipmentId,
+      // A duplicate that was merged away isn't shown; its history is on the pump it was merged into.
+      mergedIntoId: null,
       ...customerEquipmentAccessWhere(user.id),
     },
     select: {
@@ -189,6 +191,16 @@ export async function getCustomerEquipment(
       serialNumber: true,
       description: true,
       company: { select: { name: true } },
+      // Manuals the service team has shared for this pump's model.
+      catalogModel: {
+        select: {
+          documents: {
+            where: { visibility: RecordVisibility.CUSTOMER_VISIBLE },
+            orderBy: [{ documentType: "asc" }, { title: "asc" }],
+            select: { id: true, title: true, documentType: true, visibility: true, fileName: true, sizeBytes: true },
+          },
+        },
+      },
       workOrders: {
         orderBy: { updatedAt: "desc" },
         select: {
@@ -211,6 +223,7 @@ export async function listCustomerEquipment(identitySubject: string, search = ""
 
   // Combined with AND for the same reason as the work order list above.
   const where: Prisma.EquipmentWhereInput = {
+    mergedIntoId: null,
     AND: [
       customerEquipmentAccessWhere(userId),
       ...(search.trim() ? [{

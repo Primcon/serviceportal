@@ -1,7 +1,8 @@
-import type { Prisma, RecordVisibility } from "@prisma/client";
+import { RecordVisibility, type Prisma } from "@prisma/client";
 import { modelDisplayName } from "@/features/work-orders/intake";
 import { pageWindow } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import { customerEquipmentAccessWhere } from "@/services/authorization-policy";
 
 const documentSelect = { id: true, title: true, documentType: true, visibility: true, fileName: true, sizeBytes: true, uploadedAt: true, uploadedBy: { select: { displayName: true } } } satisfies Prisma.ModelDocumentSelect;
 
@@ -50,5 +51,20 @@ export function modelDocuments(productModelId: string | null, visibility?: Recor
     where: { productModelId, ...(visibility ? { visibility } : {}) },
     orderBy: [{ documentType: "asc" }, { title: "asc" }],
     select: documentSelect,
+  });
+}
+
+/**
+ * The stored file behind a model document, if this customer may download it: the document
+ * must be marked customer-visible, and the customer must have a pump of that model.
+ */
+export function findCustomerModelDocument(userId: string, documentId: string) {
+  return prisma.modelDocument.findFirst({
+    where: {
+      id: documentId,
+      visibility: RecordVisibility.CUSTOMER_VISIBLE,
+      productModel: { equipment: { some: { mergedIntoId: null, ...customerEquipmentAccessWhere(userId) } } },
+    },
+    select: { storageKey: true, mimeType: true, fileName: true },
   });
 }
