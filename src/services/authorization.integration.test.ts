@@ -4,7 +4,8 @@ import { PrismaClient, UserRole } from "@prisma/client";
 import { assertPersistedInternalRole, getActiveInternalUserForRoles } from "./authorization";
 import { grantUserAccess, updateDocumentVisibility, updateInternalUserRole, updateServiceStage } from "@/features/admin/actions";
 import { approveAccessRequest } from "@/features/access/actions";
-import { createCompany, uploadWorkOrderPhotos, createEquipment, createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
+import { storeWorkOrderPhoto } from "@/features/work-orders/photo-upload";
+import { createCompany, createEquipment, createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
 import sharp from "sharp";
 import { storePrivateBuffer, storePrivateFile } from "@/services/private-storage";
 
@@ -314,16 +315,12 @@ describe("database-backed internal authorization", () => {
     documentFormData.set("documentType", "OTHER");
     documentFormData.set("visibility", "INTERNAL_ONLY");
     documentFormData.set("file", new File(["test document"], "test.txt", { type: "text/plain" }));
-    const photoFormData = new FormData();
-    photoFormData.set("workOrderId", workOrder.id);
-    photoFormData.set("photoCategory", "INSPECTION");
     const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#ffffff" } }).png().toBuffer();
-    photoFormData.set("files", new File([new Uint8Array(png)], "test.png", { type: "image/png" }));
 
     try {
       const storageUnavailable = { status: "error", message: "Private file storage is not configured." };
       await expect(createInternalDocument(documentFormData)).resolves.toMatchObject(storageUnavailable);
-      await expect(uploadWorkOrderPhotos(photoFormData)).resolves.toMatchObject(storageUnavailable);
+      await expect(storeWorkOrderPhoto({ workOrder, actorUserId: internalUser.id, fileName: "test.png", content: png, photoCategory: "INSPECTION", visibility: "CUSTOMER_VISIBLE" })).rejects.toThrow("Private file storage is not configured.");
       expect(await prisma.attachment.count({ where: { workOrderId: workOrder.id } })).toBe(0);
     } finally {
       vi.mocked(storePrivateFile).mockReset();

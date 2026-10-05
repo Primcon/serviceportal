@@ -12,7 +12,7 @@ const photoFormats: Record<string, string> = {
   avif: "image/avif",
 };
 
-export const supportedPhotoDescription = "JPEG, PNG, WebP, GIF, TIFF or AVIF";
+export const supportedPhotoDescription = "JPEG, PNG, HEIC, WebP, GIF, TIFF or AVIF";
 export const supportedDocumentDescription = "PDF, Word, Excel, PowerPoint, Outlook message, CSV, text or image files";
 
 /** Identifies a photo from its decoded contents. Returns null for anything that isn't a supported raster image. */

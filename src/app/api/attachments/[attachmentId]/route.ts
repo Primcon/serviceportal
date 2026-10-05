@@ -34,26 +34,25 @@ export async function GET(
         ...customerWorkOrderAccessWhere(user.id),
       },
     },
-    select: { originalStorageKey: true, optimizedStorageKey: true, thumbnailStorageKey: true, mimeType: true, fileName: true },
+    select: { kind: true, originalStorageKey: true, originalArchivedAt: true, optimizedStorageKey: true, thumbnailStorageKey: true, mimeType: true, fileName: true },
   });
 
   if (!attachment) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const storageKey = variant === "thumbnail"
-    ? attachment.thumbnailStorageKey
-    : variant === "optimized"
-      ? attachment.optimizedStorageKey
-      : attachment.originalStorageKey;
-  const file = storageKey ? await readPrivateFile(storageKey) : null;
-  const resolvedFile = file ?? (variant ? await readPrivateFile(attachment.originalStorageKey) : null);
-  if (!resolvedFile) {
-    return NextResponse.json({ error: "File storage is not configured" }, { status: 503 });
+  // Customers get a photo's compressed viewing copy or thumbnail, never the archived original.
+  if (attachment.kind === "PHOTO") {
+    const derivativeKey = variant === "thumbnail" ? attachment.thumbnailStorageKey : attachment.optimizedStorageKey;
+    const derivative = derivativeKey ? await readPrivateFile(derivativeKey) : null;
+    if (derivative) return privateFileResponse(derivative, "image/webp", attachment.fileName.replace(/.[^.]+$/, "") + ".webp");
+    // Photos from before viewing copies existed have only an original, which was never archived.
+    if (attachment.originalArchivedAt) return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const usingDerivative = Boolean(file);
-  const isDerivative = usingDerivative && (variant === "thumbnail" || variant === "optimized");
-  const contentType = isDerivative ? "image/webp" : attachment.mimeType;
-  return privateFileResponse(resolvedFile, contentType, attachment.fileName);
+  const file = await readPrivateFile(attachment.originalStorageKey);
+  if (!file) {
+    return NextResponse.json({ error: "File storage is not configured" }, { status: 503 });
+  }
+  return privateFileResponse(file, attachment.mimeType, attachment.fileName);
 }

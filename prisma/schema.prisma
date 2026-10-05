@@ -433,6 +433,8 @@ model Attachment {
   photoCategory PhotoCategory?
   documentType DocumentType?
   originalStorageKey String
+  /// Set when a photo's original was stored in the archive tier. It then can't be read directly: staff request a retrieved copy.
+  originalArchivedAt DateTime?
   optimizedStorageKey String?
   thumbnailStorageKey String?
   fileName String

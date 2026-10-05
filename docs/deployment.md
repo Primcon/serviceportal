@@ -25,6 +25,26 @@ docker run --rm -p 3000:3000 vactech-service-portal:local
 
 Do not pass `.env` into the image build. Configure the deployed container with Key Vault-backed environment values. Azure Container Apps should target port `3000` and use the health probes below.
 
+## File Storage
+
+Files are kept in one private Blob Storage container. The app's identity needs **Storage Blob Data Contributor** on it.
+
+- **Photos** are stored three ways: a compressed viewing copy and a thumbnail (both WebP, Hot tier), and the untouched original in the **Archive** tier. Everyone, staff and customers, sees the viewing copy. The storage account must be general-purpose v2 with LRS, GRS or RA-GRS redundancy; zone-redundant accounts don't support the Archive tier.
+- **An archived original can't be read directly.** When staff request one, the app copies it to `retrievals/<attachment id>/original` in the Hot tier. Azure completes that copy in up to 15 hours. The archived original itself never moves.
+- **Retrieved copies are removed after 7 days** by a lifecycle rule, kept in [`deploy/storage-lifecycle-policy.json`](../deploy/storage-lifecycle-policy.json). Apply it to each storage account once:
+
+  ```bash
+  az storage account management-policy create --account-name <account> --resource-group <group> --policy @deploy/storage-lifecycle-policy.json
+  ```
+
+- Azure charges an early-deletion fee for an archived blob removed within 180 days. For a deleted photo this is a fraction of a cent.
+- Documents and model manuals are stored as uploaded, in the Hot tier.
+- Local development without `AZURE_STORAGE_ACCOUNT_NAME` set stores files under `.data/private-storage`, where there is no archive tier and a requested original is available at once.
+
+## Upload Limits
+
+Photos are uploaded one per request to `/api/internal/work-orders/<id>/photos` (40 MB each), which the proxy doesn't handle. Documents (25 MB) and model manuals (50 MB) go through server actions, which do pass through the proxy; `next.config.ts` raises both the server-action limit and `proxyClientMaxBodySize` to 64 MB, because the proxy otherwise cuts request bodies off at 10 MB.
+
 ## Health Probes
 
 Configure the hosting platform to use these unauthenticated endpoints:
