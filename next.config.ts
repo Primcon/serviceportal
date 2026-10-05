@@ -16,10 +16,16 @@ const nextConfig: NextConfig = {
   output: "standalone",
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   poweredByHeader: false,
+  // The HEIC decoder is a large WebAssembly module; load it from node_modules instead of bundling it.
+  serverExternalPackages: ["heic-convert"],
   experimental: {
+    // Documents (25 MB) and model manuals (50 MB) are uploaded through server actions. Photos
+    // go one at a time to their own route, which the proxy doesn't handle.
     serverActions: {
-      bodySizeLimit: "250mb",
+      bodySizeLimit: "64mb",
     },
+    // Form posts pass through the proxy, which buffers the body and by default cuts it off at 10 MB.
+    proxyClientMaxBodySize: "64mb",
   },
   turbopack: {
     root: resolve(__dirname),

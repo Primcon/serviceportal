@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { UserRole } from "@prisma/client";
-import sharp from "sharp";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/lib/action-result";
@@ -11,24 +10,11 @@ import { runAction } from "@/lib/run-action";
 import { findOrCreateProductModel, modelDisplayName } from "@/features/work-orders/intake";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
-import { detectDocumentType, detectPhotoType, supportedDocumentDescription, supportedPhotoDescription } from "@/services/file-types";
+import { detectDocumentType, supportedDocumentDescription } from "@/services/file-types";
 import { deletePrivateFile, storePrivateBuffer } from "@/services/private-storage";
 import { logCustomerNotification, statusChangeNotification } from "@/services/notifications";
 
 const requiredText = z.string().trim().min(1);
-const photoCategorySchema = z.enum([
-  "ARRIVAL",
-  "IDENTIFICATION",
-  "INITIAL_CONDITION",
-  "INSPECTION",
-  "DISASSEMBLY",
-  "FINDINGS",
-  "REPAIR",
-  "REPLACEMENT_PARTS",
-  "TESTING",
-  "FINAL_CONDITION",
-  "SHIPPING",
-]);
 const documentTypeSchema = z.enum([
   "CUSTOMER_PO",
   "REPAIR_QUOTE",
@@ -262,103 +248,6 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
     revalidatePath("/portal");
     revalidatePath(`/workspace/work-orders/${input.workOrderId}`);
     return changed ? "Service state updated." : "The stage and condition are unchanged. Use a note to add information.";
-  });
-}
-
-export async function uploadWorkOrderPhotos(formData: FormData): Promise<ActionResult> {
-  return runAction(async () => {
-    const input = z
-      .object({ workOrderId: requiredText, photoCategory: photoCategorySchema, visibility: z.enum(["INTERNAL_ONLY", "CUSTOMER_VISIBLE"]) })
-      .parse({
-        workOrderId: value(formData, "workOrderId"),
-        photoCategory: value(formData, "photoCategory"),
-        visibility: value(formData, "visibility") || "CUSTOMER_VISIBLE",
-      });
-    // The form has separate camera and library inputs; the unused one arrives as an empty file.
-    const files = formData.getAll("files").filter((file): file is File => file instanceof File && (file.size > 0 || file.name !== ""));
-    if (!files.length) {
-      throw new UserFacingError("Choose at least one photo.");
-    }
-    const empty = files.find((file) => file.size === 0);
-    if (empty) {
-      throw new UserFacingError(`${safeFileName(empty, "A photo")} is empty.`);
-    }
-    if (files.length > 20) {
-      throw new UserFacingError("Upload up to 20 photos at a time.");
-    }
-    const oversized = files.find((file) => file.size > 10 * 1024 * 1024);
-    if (oversized) {
-      throw new UserFacingError(`${safeFileName(oversized, "A photo")} is larger than 10 MB.`);
-    }
-
-    const internalUser = await getActiveInternalUser();
-    const workOrder = await getAuthorizedWorkOrder(input.workOrderId);
-    // Check every file's real contents before storing any, so one bad file doesn't leave a partial batch.
-    const photoTypes: string[] = [];
-    for (const file of files) {
-      const photoType = await detectPhotoType(Buffer.from(await file.arrayBuffer()));
-      if (!photoType) {
-        throw new UserFacingError(`${safeFileName(file, "A file")} isn't a supported photo. Upload ${supportedPhotoDescription} images.`);
-      }
-      photoTypes.push(photoType);
-    }
-    for (const [index, file] of files.entries()) {
-      const photoType = photoTypes[index];
-      const source = Buffer.from(await file.arrayBuffer());
-      const image = sharp(source);
-      const [optimized, thumbnail] = await Promise.all([
-        image.clone().resize({ width: 2000, withoutEnlargement: true }).webp({ quality: 82 }).toBuffer(),
-        image.clone().resize({ width: 480, height: 480, fit: "inside", withoutEnlargement: true }).webp({ quality: 76 }).toBuffer(),
-      ]);
-      const storageKey = storageKeyPrefix(input.workOrderId);
-      const keys = { original: `${storageKey}/original`, optimized: `${storageKey}/optimized.webp`, thumbnail: `${storageKey}/thumbnail.webp` };
-      const stored = await Promise.all([
-        storePrivateBuffer({ key: keys.original, content: source, contentType: photoType }),
-        storePrivateBuffer({ key: keys.optimized, content: optimized, contentType: "image/webp" }),
-        storePrivateBuffer({ key: keys.thumbnail, content: thumbnail, contentType: "image/webp" }),
-      ]);
-      if (stored.some((result) => !result)) {
-        await discardStoredFiles(Object.values(keys));
-        throw new UserFacingError("Private file storage is not configured.");
-      }
-      try {
-        await prisma.$transaction(async (transaction) => {
-          const attachment = await transaction.attachment.create({
-            data: {
-              workOrderId: input.workOrderId,
-              equipmentId: workOrder.equipmentId,
-              serviceStageId: workOrder.serviceStageId,
-              kind: "PHOTO",
-              visibility: input.visibility,
-              photoCategory: input.photoCategory,
-              originalStorageKey: keys.original,
-              optimizedStorageKey: keys.optimized,
-              thumbnailStorageKey: keys.thumbnail,
-              fileName: safeFileName(file, "photo"),
-              mimeType: photoType,
-              sizeBytes: file.size,
-              uploadedById: internalUser.id,
-            },
-          });
-          await recordAudit(transaction, {
-            workOrderId: input.workOrderId,
-            actorUserId: internalUser.id,
-            eventType: "photo.uploaded",
-            entityType: "Attachment",
-            entityId: attachment.id,
-            customerVisible: input.visibility === "CUSTOMER_VISIBLE",
-            metadata: { photoCategory: input.photoCategory, bulkUpload: true },
-          });
-        });
-      } catch (error) {
-        await discardStoredFiles(Object.values(keys));
-        throw error;
-      }
-    }
-    revalidatePath(`/workspace/work-orders/${input.workOrderId}`);
-    revalidatePath(`/portal/work-orders/${input.workOrderId}`);
-    revalidatePath("/portal");
-    return `${files.length} photo${files.length === 1 ? "" : "s"} uploaded.`;
   });
 }
 

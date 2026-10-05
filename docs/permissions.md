@@ -30,4 +30,8 @@ Employee roles are managed in the portal on the Users page. Microsoft Entra deci
 
 Model manuals follow the same rule: staff can download any of them, and a customer only one that is marked customer-visible for a model they have a pump of.
 
+Customers are only ever sent a photo's compressed viewing copy or thumbnail. Any staff member can request a photo's archived original; each request is recorded in the audit log.
+
+Route handlers that change data (photo upload, requesting an original) check that the request came from the portal's own origin, the protection server actions get from Next.js.
+
 Files remain private. The application authorizes the requesting user against the attachment's work order and visibility before returning a short-lived storage authorization or proxying content. Permanent public blob URLs are prohibited.

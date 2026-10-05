@@ -1,14 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
-import { Camera, ChevronLeft, ChevronRight, Download, EyeOff, ImagePlus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Download, EyeOff, Trash2 } from "lucide-react";
 import type { PhotoCategory, RecordVisibility } from "@prisma/client";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { Field } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
-import { uploadWorkOrderPhotos } from "@/features/work-orders/actions";
+import { PhotoUploader } from "@/features/work-orders/components/photo-uploader";
 import { deletePhoto, updatePhoto } from "@/features/work-orders/record-actions";
 import { photoCategoryLabels } from "@/lib/labels";
 
@@ -26,34 +26,39 @@ export type GalleryPhoto = {
 const categories = Object.keys(photoCategoryLabels) as PhotoCategory[];
 const dateTime = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
-function PhotoUpload({ workOrderId }: { workOrderId: string }) {
-  const formRef = useRef<HTMLFormElement>(null);
-  // Uploading starts as soon as photos are chosen; the category and sharing choices apply to the batch.
-  const submit = () => formRef.current?.requestSubmit();
+type OriginalState = "unknown" | "checking" | "available" | "retrieving" | "archived" | "error";
 
-  return (
-    <div ref={(element) => { formRef.current = element?.querySelector("form") ?? null; }}>
-      <ActionFeedbackForm action={uploadWorkOrderPhotos} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end" feedbackClassName="sm:col-span-3" resetOnSuccess successMessage="Photos uploaded.">
-        <input name="workOrderId" type="hidden" value={workOrderId} />
-        <Field htmlFor="photo-category" label="Category">
-          <select className={fieldStyles} defaultValue="INSPECTION" id="photo-category" name="photoCategory">{categories.map((category) => <option key={category} value={category}>{photoCategoryLabels[category]}</option>)}</select>
-        </Field>
-        <Field htmlFor="photo-visibility" label="Who can see them">
-          <select className={fieldStyles} defaultValue="CUSTOMER_VISIBLE" id="photo-visibility" name="visibility"><option value="CUSTOMER_VISIBLE">Customer and staff</option><option value="INTERNAL_ONLY">Staff only</option></select>
-        </Field>
-        <div className="flex gap-2">
-          <label className={buttonStyles({ className: "cursor-pointer" })}>
-            <Camera size={16} /> Take photo
-            <input accept="image/*" capture="environment" className="sr-only" name="files" onChange={submit} type="file" />
-          </label>
-          <label className={buttonStyles({ variant: "outline", className: "cursor-pointer" })}>
-            <ImagePlus size={16} /> Choose photos
-            <input accept="image/*" className="sr-only" multiple name="files" onChange={submit} type="file" />
-          </label>
-        </div>
-      </ActionFeedbackForm>
-    </div>
-  );
+/**
+ * The full-size original of a photo. Originals are kept in archive storage, so the first
+ * step is to ask for one; it's ready within about 15 hours and stays available for a week.
+ */
+function OriginalPhoto({ photo }: { photo: GalleryPhoto }) {
+  const [state, setState] = useState<OriginalState>("unknown");
+
+  async function check(method: "GET" | "POST") {
+    setState("checking");
+    try {
+      const response = await fetch(`/api/internal/attachments/${photo.id}/original`, { method });
+      const result = await response.json() as { state?: OriginalState };
+      setState(response.ok && result.state ? result.state : "error");
+    } catch {
+      setState("error");
+    }
+  }
+
+  if (state === "unknown") return <button className={buttonStyles({ variant: "ghost", size: "sm" })} onClick={() => check("GET")} type="button"><Download size={15} /> Full-size original</button>;
+  if (state === "checking") return <p className="text-sm text-muted">Checking...</p>;
+  if (state === "available") return <a className={buttonStyles({ variant: "ghost", size: "sm" })} download={photo.fileName} href={`/api/internal/attachments/${photo.id}?variant=original`}><Download size={15} /> Download original ({photo.fileName})</a>;
+  if (state === "retrieving") return <p className="max-w-sm text-sm text-muted">The original is being retrieved from archive storage. It can take up to 15 hours; check back here later.</p>;
+  if (state === "archived") {
+    return (
+      <div className="flex max-w-md flex-wrap items-center gap-2 text-sm text-muted">
+        <span>The original is in archive storage. Retrieving it takes up to 15 hours.</span>
+        <button className={buttonStyles({ variant: "outline", size: "sm" })} onClick={() => check("POST")} type="button">Request original</button>
+      </div>
+    );
+  }
+  return <p className="text-sm text-danger">The original couldn&apos;t be checked. <button className="font-bold underline" onClick={() => check("GET")} type="button">Try again</button></p>;
 }
 
 function PhotoViewer({ photos, index, onNavigate, onClose }: { photos: GalleryPhoto[]; index: number; onNavigate: (index: number) => void; onClose: () => void }) {
@@ -91,7 +96,7 @@ function PhotoViewer({ photos, index, onNavigate, onClose }: { photos: GalleryPh
           <select className={fieldStyles} defaultValue={photo.visibility} id="photo-edit-visibility" name="visibility"><option value="CUSTOMER_VISIBLE">Customer and staff</option><option value="INTERNAL_ONLY">Staff only</option></select>
         </Field>
         <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-2">
-          <a className={buttonStyles({ variant: "ghost", size: "sm" })} href={`/api/internal/attachments/${photo.id}`}><Download size={15} /> Original ({photo.fileName})</a>
+          <OriginalPhoto key={photo.id} photo={photo} />
           <button className={buttonStyles({ size: "sm" })}>Save</button>
         </div>
       </ActionFeedbackForm>
@@ -126,7 +131,7 @@ export function PhotoGallery({ workOrderId, photos, initialPhotoId }: { workOrde
 
   return (
     <div className="grid gap-5">
-      <PhotoUpload workOrderId={workOrderId} />
+      <PhotoUploader workOrderId={workOrderId} />
       {photos.length > 0 && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filter photos by category">
           {(["ALL", ...presentCategories] as const).map((item) => {

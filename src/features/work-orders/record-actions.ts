@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { UserRole } from "@prisma/client";
 import { z } from "zod";
 import { detailFields, detailsSchema, optionalText } from "@/features/work-orders/details-schema";
+import { originalRetrievalKey } from "@/features/work-orders/photo-upload";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/lib/action-result";
 import { AccessDeniedError, UserFacingError } from "@/lib/errors";
@@ -163,7 +164,8 @@ export async function deletePhoto(formData: FormData): Promise<ActionResult> {
       await recordAudit(transaction, { workOrderId: found.workOrderId, actorUserId: user.id, eventType: "photo.deleted", entityType: "Attachment", entityId: found.id, metadata: { fileName: found.fileName } });
       return found;
     });
-    await Promise.all([photo.originalStorageKey, photo.optimizedStorageKey, photo.thumbnailStorageKey].filter((key): key is string => Boolean(key)).map(async (key) => {
+    // Includes any copy of the original that was retrieved from the archive.
+    await Promise.all([photo.originalStorageKey, photo.optimizedStorageKey, photo.thumbnailStorageKey, originalRetrievalKey(photo.id)].filter((key): key is string => Boolean(key)).map(async (key) => {
       try {
         await deletePrivateFile(key);
       } catch (error) {

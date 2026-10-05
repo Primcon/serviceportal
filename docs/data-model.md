@@ -38,7 +38,7 @@ Updates, findings, and attachments hold explicit `INTERNAL_ONLY` or `CUSTOMER_VI
 
 ## Attachments and Audit
 
-`Attachment` supports photos and documents with private original, optimized, and thumbnail storage keys, metadata, category or document type, visibility, caption, uploader, and optional equipment/stage associations. It never stores file binaries or public URLs. Document types include invoices, manuals, warranty certificates and signed travelers.
+`Attachment` supports photos and documents with private original, optimized, and thumbnail storage keys, metadata, category or document type, visibility, caption, uploader, and optional equipment/stage associations. It never stores file binaries or public URLs. A photo uploaded since October 2026 has `originalArchivedAt` set: its original is in archive storage and only the optimized copy and thumbnail are served (see File Storage in [deployment.md](deployment.md)). HEIC photos from iPhones are accepted; their viewing copies are converted like any other. Document types include invoices, manuals, warranty certificates and signed travelers.
 
 `AuditEvent` records system activity, written in the same transaction as the change it describes. Only deliberately customer-safe events appear in the customer timeline.
 

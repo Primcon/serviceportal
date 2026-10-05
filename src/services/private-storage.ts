@@ -1,6 +1,6 @@
 import { DefaultAzureCredential } from "@azure/identity";
 import { BlobServiceClient, ContainerClient } from "@azure/storage-blob";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
 function getContainerClient(): ContainerClient | null {
@@ -46,11 +46,14 @@ export async function storePrivateBuffer(input: {
   key: string;
   content: Buffer;
   contentType: string;
+  /** Store in the low-cost archive tier. The file can't be read directly; see startArchivedFileRetrieval. */
+  archive?: boolean;
 }) {
   const container = getContainerClient();
   if (container) {
     await container.getBlockBlobClient(input.key).uploadData(input.content, {
       blobHTTPHeaders: { blobContentType: input.contentType },
+      ...(input.archive ? { tier: "Archive" } : {}),
     });
     return true;
   }
@@ -91,4 +94,47 @@ export async function deletePrivateFile(key: string) {
   }
   await rm(localStoragePath(key), { force: true });
   return true;
+}
+
+export type PrivateFileState = "missing" | "archived" | "retrieving" | "available";
+
+/**
+ * Whether a file can be read now. Archived files can't; a retrieved copy is "retrieving"
+ * while Azure brings it out of the archive, which takes up to 15 hours.
+ */
+export async function privateFileState(key: string): Promise<PrivateFileState> {
+  const container = getContainerClient();
+  if (!container) {
+    // Local development storage has no archive tier, so a stored file is always readable.
+    try {
+      await stat(localStoragePath(key));
+      return "available";
+    } catch {
+      return "missing";
+    }
+  }
+  try {
+    const properties = await container.getBlobClient(key).getProperties();
+    if (properties.archiveStatus) return "retrieving";
+    return properties.accessTier === "Archive" ? "archived" : "available";
+  } catch (error) {
+    if (isMissingPrivateFileError(error)) return "missing";
+    throw error;
+  }
+}
+
+/**
+ * Starts copying an archived file to a readable one at destinationKey. The archived file
+ * stays archived. Azure finishes the copy in the background, so poll privateFileState on
+ * the destination.
+ */
+export async function startArchivedFileRetrieval(sourceKey: string, destinationKey: string) {
+  const container = getContainerClient();
+  if (!container) {
+    const destination = localStoragePath(destinationKey);
+    await mkdir(resolve(/* turbopackIgnore: true */ destination, ".."), { recursive: true });
+    await copyFile(localStoragePath(sourceKey), destination);
+    return;
+  }
+  await container.getBlobClient(destinationKey).beginCopyFromURL(container.getBlobClient(sourceKey).url, { tier: "Hot", rehydratePriority: "Standard" });
 }
