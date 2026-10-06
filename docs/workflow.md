@@ -34,6 +34,16 @@ Each open work order is either with one person or waiting in the queue (nobody i
 - **Stage board** (`/workspace/board`): every open job by stage, longest-waiting first, with the owner, days in stage and promised date. Dates past the promise show in red.
 - The work order list filters by who has a job, open jobs only, and past the promised date.
 
+## Checklists and Sign-offs
+
+The steps of the job order form are a **checklist template** that carries the form number and revision (today 852-01-01 Rev. 9). Each step belongs to a workflow stage and is one of three kinds: a sign-off, a reading with a unit (such as a helium leak rate), or a list of items each marked done or N/A. A step can be reserved for QA and can be optional.
+
+- **Signing** records the signed-in person and the time, in place of initials and a date. A step that doesn't apply to a job can be marked not applicable, with a reason. The signer or a manager can clear a sign-off. Every sign-off, clearing and override is in the audit log. A closed job's checklist can't be changed.
+- **Gate:** a job can't move forward to a stage while a required step of an earlier stage is unsigned. Moving backward, changing only the condition, and cancelling are never held up. A manager can move a job on anyway by giving a reason, which is stored on the stage change (`overrideReason`) and shown on the timeline.
+- **Revisions:** a new work order takes the active revision and keeps it for life (`WorkOrder.checklistTemplateId`). A revision is locked once any work order uses it; to change steps, managers create a new revision (a copy), edit it, and make it active. Jobs already open stay on their revision.
+- The starting checklist's steps and QA requirements (`src/features/checklists/default-template.ts`) are a first draft from the paper form, to be confirmed by VacTech. The form's parts and quote lines are tracked separately.
+- Work orders opened before checklists existed have none until someone chooses "Start the checklist" on them.
+
 ## Activity
 
 Intake eventually captures equipment identification, serial/nameplate and condition photos, container condition, accessories, paperwork, and visible damage. Completion may advance to Initial Inspection. Creation, uploads, updates, and stage changes generate audited timeline events; customer views show only customer-safe events.

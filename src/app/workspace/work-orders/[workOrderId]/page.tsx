@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListKind, UserRole, WorkOrderCondition } from "@prisma/client";
-import { AlertTriangle, ArrowLeft, BookOpen, Camera, Hand, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpen, Camera, Hand, ListChecks, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,9 @@ import { Field } from "@/components/ui/field";
 import { buttonStyles, fieldStyles, panelStyles } from "@/components/ui/styles";
 import { deleteDocument, updateDocumentVisibility } from "@/features/admin/actions";
 import { assignWorkOrder } from "@/features/assignments/actions";
+import { startChecklist } from "@/features/checklists/actions";
+import { canSignQaSteps, getWorkOrderChecklist, initials } from "@/features/checklists/checklist";
+import { ChecklistPanel } from "@/features/checklists/components/checklist-panel";
 import { assignableStaff } from "@/features/assignments/assign";
 import { wholeDaysSince } from "@/features/work-orders/queue";
 import { ModelDocumentList } from "@/features/catalog/components/model-document-list";
@@ -63,13 +66,14 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
   const workOrder = await getInternalWorkOrder(workOrderId);
   if (!workOrder) notFound();
 
-  const [stages, priorities, serviceTypes, centers, manuals, staff, customerPortalUsers] = await Promise.all([
+  const [stages, priorities, serviceTypes, centers, manuals, staff, checklist, customerPortalUsers] = await Promise.all([
     listActiveServiceStages(),
     listOptions(ListKind.PRIORITY),
     listOptions(ListKind.SERVICE_TYPE),
     serviceCenters(),
     modelDocuments(workOrder.equipment.productModelId),
     assignableStaff(),
+    getWorkOrderChecklist(workOrder.id, workOrder.checklistTemplateId),
     prisma.userAccess.count({
       where: {
         companyId: workOrder.companyId,
@@ -95,6 +99,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
   const isClosed = Boolean(workOrder.completedAt) || workOrder.condition === "CANCELLED";
   const isMine = workOrder.assignedToId === viewer.id;
   const daysInStage = wholeDaysSince(workOrder.stageEnteredAt);
+  const signedSteps = checklist?.steps.filter((step) => step.record).length ?? 0;
   const handlingWarning = workOrder.copperClassification !== "UNKNOWN" || workOrder.contaminants;
 
   return (
@@ -158,6 +163,43 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="grid content-start gap-6">
+          <Section
+            actions={checklist && <p className="text-sm text-muted">{signedSteps} of {checklist.steps.length} signed · Form {checklist.formNumber} Rev. {checklist.revision}</p>}
+            icon={<ListChecks className="text-brand" size={20} />}
+            id="checklist"
+            title="Checklist"
+          >
+            {checklist ? (
+              <ChecklistPanel
+                canSignQa={canSignQaSteps(viewer.internalRole)}
+                currentStageId={workOrder.serviceStageId}
+                isClosed={isClosed}
+                isManager={isManager}
+                steps={checklist.steps.map((step) => ({
+                  id: step.id,
+                  label: step.label,
+                  type: step.type,
+                  unit: step.unit,
+                  items: step.items,
+                  requiresQa: step.requiresQa,
+                  isRequired: step.isRequired,
+                  stageId: step.serviceStage.id,
+                  stageName: step.serviceStage.displayName,
+                  record: step.record && { performedById: step.record.performedById, performedBy: step.record.performedBy.displayName, initials: initials(step.record.performedBy.displayName), performedAt: step.record.performedAt.toISOString(), notApplicable: step.record.notApplicable, reading: step.record.reading, checkedItems: step.record.checkedItems, notApplicableItems: step.record.notApplicableItems, note: step.record.note },
+                }))}
+                viewerId={viewer.id}
+                workOrderId={workOrder.id}
+              />
+            ) : isClosed ? (
+              <p className="text-sm text-muted">This job was completed before checklists were tracked in the portal.</p>
+            ) : (
+              <ActionFeedbackForm action={startChecklist} className="flex flex-wrap items-center gap-3">
+                <input name="workOrderId" type="hidden" value={workOrder.id} />
+                <p className="text-sm text-muted">This job was opened before checklists were tracked in the portal.</p>
+                <button className={buttonStyles({ variant: "outline", size: "sm" })}><ListChecks size={15} /> Start the checklist</button>
+              </ActionFeedbackForm>
+            )}
+          </Section>
           <TimelineComposer customerHasPortalUsers={customerPortalUsers > 0} workOrderId={workOrder.id} />
           <Section icon={<History className="text-brand" size={20} />} title="Timeline">
             <TimelineList entries={timeline} workOrderId={workOrder.id} />
@@ -198,6 +240,11 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
               <Field hint="Staff only. Say what was done and what's next." htmlFor="status-note" label="Handoff note" optional>
                 <textarea className={fieldStyles} id="status-note" maxLength={1000} name="note" rows={2} />
               </Field>
+              {isManager && checklist && (
+                <Field hint="Only needed to move a job on while required checklist steps are unsigned. It's recorded." htmlFor="override-reason" label="Manager override reason" optional>
+                  <input className={fieldStyles} id="override-reason" maxLength={500} name="overrideReason" />
+                </Field>
+              )}
               <button className={buttonStyles()}>Update state</button>
             </ActionFeedbackForm>
           </Section>

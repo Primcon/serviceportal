@@ -42,7 +42,7 @@ properties:
   template:
     containers:
       - name: vactech-service-portal
-        image: vactechportalacr.azurecr.io/vactech-service-portal@sha256:b842983191f3a682f281a9816739c8d4c828ab86a816d921d9ff693766f928c2
+        image: vactechportalacr.azurecr.io/vactech-service-portal@sha256:d81f219c1f33bd51ad175e1b8033ad46eb6d87500f7e592f8ad00b1d344313fa
         env:
           - name: AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING
             secretRef: acs-connection

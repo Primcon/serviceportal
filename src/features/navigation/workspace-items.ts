@@ -1,5 +1,5 @@
 import { UserRole } from "@prisma/client";
-import { BookOpen, Building2, ClipboardList, KanbanSquare, FileSpreadsheet, Inbox, LayoutDashboard, Package, ScrollText, Settings, UsersRound, Workflow, type LucideIcon } from "lucide-react";
+import { BookOpen, Building2, ClipboardList, KanbanSquare, ListChecks, FileSpreadsheet, Inbox, LayoutDashboard, Package, ScrollText, Settings, UsersRound, Workflow, type LucideIcon } from "lucide-react";
 
 export const allInternalRoles: UserRole[] = [UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER, UserRole.VACTECH_QA, UserRole.VACTECH_SERVICE_USER];
 export const managerRoles: UserRole[] = [UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER];
@@ -39,6 +39,7 @@ export const workspaceNavigation: WorkspaceNavigationGroup[] = [
     label: "Administration",
     items: [
       { href: "/workspace/workflow", label: "Workflow", icon: Workflow, roles: managerRoles },
+      { href: "/workspace/checklists", label: "Checklists", icon: ListChecks, roles: managerRoles },
       { href: "/workspace/settings", label: "Settings", icon: Settings, roles: managerRoles },
       { href: "/workspace/reports", label: "Reports", icon: FileSpreadsheet, roles: managerRoles },
       { href: "/workspace/audit", label: "Audit", icon: ScrollText, roles: managerRoles },

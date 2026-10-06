@@ -8,6 +8,7 @@
  * anything but a local database.
  */
 import { PrismaClient, UserRole, type CustomerFacingStatus, type WorkOrderCondition } from "@prisma/client";
+import { ensureActiveChecklistTemplate } from "../src/features/checklists/default-template";
 import { ensureInitialStages } from "../src/features/work-orders/initial-stages";
 
 const prisma = new PrismaClient();
@@ -137,6 +138,7 @@ const accessRequests = [
 async function main() {
   assertLocalDatabase();
   await ensureInitialStages(prisma);
+  await ensureActiveChecklistTemplate(prisma);
   const stages = new Map((await prisma.serviceStage.findMany()).map((stage) => [stage.code, stage]));
   const stage = (code: string) => {
     const found = stages.get(code);

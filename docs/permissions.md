@@ -10,7 +10,11 @@ The portal has four staff roles and one customer role. Each staff role includes 
 | Change a work order's stage and condition | Yes | Yes | Yes | Yes |
 | Take a job, hand it to someone, return it to the queue | Yes | Yes | Yes | Yes |
 | Delete a photo | Any | Any | Own | Own |
-| Sign the steps reserved for QA (from Phase 2, milestone 2) | Yes | Yes | Yes | No |
+| Sign checklist steps; mark a step not applicable | Yes | Yes | Yes | Yes |
+| Sign the checklist steps reserved for QA | Yes | Yes | Yes | No |
+| Clear a checklist sign-off | Any | Any | Own | Own |
+| Move a job on with required steps unsigned (override, with a reason) | Yes | Yes | No | No |
+| Checklists: edit steps, create revisions, choose the active one | Yes | Yes | No | No |
 | Change document visibility; delete documents | Yes | Yes | No | No |
 | Customers and locations: add, rename, archive, merge | Yes | Yes | No | No |
 | Archive or merge pumps | Yes | Yes | No | No |

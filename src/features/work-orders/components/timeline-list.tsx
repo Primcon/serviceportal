@@ -42,6 +42,7 @@ export function TimelineList({ entries, workOrderId }: { entries: TimelineEntry[
               <Entry icon={<Flag size={15} />} key={`status-${entry.id}`} meta={meta} title={entry.isFirst ? `Work order opened at ${entry.stage}` : `Moved to ${entry.stage}`} tone="ink">
                 <p className="text-muted">Customer sees: {customerStatusLabels[entry.customerStatus]}{entry.condition !== "NORMAL" && ` · Condition: ${formatEnumLabel(entry.condition)}`}</p>
                 {entry.note && <div className="mt-1 border-l-2 border-line pl-3"><Body text={entry.note} /></div>}
+                {entry.overrideReason && <p className="mt-1 border-l-2 border-danger pl-3"><span className="font-bold text-danger">Manager override, checklist steps unsigned:</span> {entry.overrideReason}</p>}
               </Entry>
             );
           case "customer-update":
