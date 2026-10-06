@@ -304,6 +304,9 @@ model ServiceCenter {
   id String @id @default(uuid()) @db.Uuid
   code String @unique
   name String
+  /// Shown to customers on their repairs as the place to ask questions.
+  contactEmail String?
+  contactPhone String?
   isActive Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -334,6 +337,8 @@ model ServiceStage {
   id String @id @default(uuid()) @db.Uuid
   code String @unique
   displayName String
+  /// The step customers see for this stage, such as "Inspection". Stages that share a label are one step on the customer's progress tracker.
+  customerLabel String?
   sequence Int @unique
   customerFacingStatus CustomerFacingStatus
   isActive Boolean @default(true)

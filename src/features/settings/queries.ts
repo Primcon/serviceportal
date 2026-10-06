@@ -15,7 +15,7 @@ export function serviceCenters({ includeInactive = false } = {}) {
   return prisma.serviceCenter.findMany({
     where: includeInactive ? {} : { isActive: true },
     orderBy: { code: "asc" },
-    select: { id: true, code: true, name: true, isActive: true, _count: { select: { workOrders: true } } },
+    select: { id: true, code: true, name: true, contactEmail: true, contactPhone: true, isActive: true, _count: { select: { workOrders: true } } },
   });
 }
 

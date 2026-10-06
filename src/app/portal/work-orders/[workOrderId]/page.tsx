@@ -1,24 +1,180 @@
 import Link from "next/link";
-import Image from "next/image";
-import { Activity, ArrowLeft, CalendarDays, Camera, ClipboardCheck, FileText, History, Lightbulb } from "lucide-react";
 import { notFound } from "next/navigation";
-import { getCustomerWorkOrder } from "@/features/work-orders/customer-queries";
-import { getRequestActor } from "@/services/request-actor";
-import { documentTypeLabels, formatEnumLabel } from "@/lib/labels";
+import { AlertCircle, ArrowLeft, Camera, Download, FileText, Info, Lightbulb, Mail, MessageSquareText, Phone, Star } from "lucide-react";
+import type { ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
+import { buttonStyles, eyebrowStyles, panelStyles } from "@/components/ui/styles";
+import { CustomerPhotoGallery } from "@/features/customer/components/customer-photo-gallery";
+import { ProgressTracker } from "@/features/customer/components/progress-tracker";
+import { customerConditionNotices, customerStageLabel, progressSteps } from "@/features/customer/progress";
+import { customerProgressStages, getCustomerWorkOrder } from "@/features/work-orders/customer-queries";
 import { shopTimeZone } from "@/lib/dates";
+import { customerStatusLabels, documentTypeLabels } from "@/lib/labels";
+import { getRequestActor } from "@/services/request-actor";
 
 export const dynamic = "force-dynamic";
 
-function formatDate(date: Date) { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone }).format(date); }
-function activityLabel(eventType: string) { return eventType === "work-order.created" ? "Repair record created" : eventType === "work-order.status-changed" ? "Service status updated" : eventType === "service-update.posted" ? "Service update posted" : eventType === "photo.uploaded" ? "Service photo added" : eventType === "document.uploaded" ? "Service document added" : "Service activity recorded"; }
+const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
+const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: shopTimeZone });
+const calendarDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+
+function Section({ icon, title, actions, children }: { icon: ReactNode; title: string; actions?: ReactNode; children: ReactNode }) {
+  return (
+    <section className={panelStyles}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-lg font-bold">{icon}{title}</h2>
+        {actions}
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function fileSize(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
 
 export default async function CustomerWorkOrderPage({ params }: { params: Promise<{ workOrderId: string }> }) {
   const { workOrderId } = await params;
   const actor = await getRequestActor("customer");
-  const workOrder = actor ? await getCustomerWorkOrder(actor.identitySubject, workOrderId) : null;
+  const workOrder = actor ? await getCustomerWorkOrder(actor.identitySubject, workOrderId).catch(() => null) : null;
   if (!workOrder) notFound();
-  const photos = workOrder.attachments.filter((attachment) => attachment.kind === "PHOTO");
-  const documents = workOrder.attachments.filter((attachment) => attachment.kind === "DOCUMENT");
+  const stages = await customerProgressStages();
 
-  return <main className="min-h-screen bg-paper px-5 py-10 text-ink sm:px-10"><div className="mx-auto max-w-5xl"><Link className="flex w-fit items-center gap-2 text-sm font-bold text-brand" href="/portal"><ArrowLeft size={16} /> My repairs</Link><section className="mt-6 border-b border-line pb-7"><div className="flex flex-wrap items-start justify-between gap-5"><div><p className="text-sm font-bold tracking-[0.1em] text-danger">{workOrder.workOrderNumber}</p><h1 className="mt-2 text-4xl font-bold">{workOrder.summary}</h1><p className="mt-3 text-muted"><Link className="hover:text-brand" href={`/portal/equipment/${workOrder.equipment.id}`}>{workOrder.equipment.productModel} · Serial {workOrder.equipment.serialNumber}</Link></p></div><div className="border-l-4 border-brand pl-4"><p className="text-xs font-bold tracking-[0.08em] text-muted">REPAIR STATUS</p><p className="mt-1 text-lg font-bold">{formatEnumLabel(workOrder.customerFacingStatus)}</p><p className="mt-1 text-sm text-muted">{workOrder.serviceStage.displayName}</p></div></div><div className="mt-6 grid gap-3 border-t border-line pt-5 sm:grid-cols-3"><div><p className="text-xs font-bold tracking-[0.08em] text-muted">CUSTOMER</p><p className="mt-1 font-bold">{workOrder.company.name}</p></div><div><p className="text-xs font-bold tracking-[0.08em] text-muted">CONDITION</p><p className="mt-1 font-bold">{formatEnumLabel(workOrder.statusHistory[0]?.condition ?? "NORMAL")}</p></div><div><p className="text-xs font-bold tracking-[0.08em] text-muted">LAST UPDATED</p><p className="mt-1 font-bold">{formatDate(workOrder.updatedAt)}</p></div></div></section><section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]"><div className="border border-line bg-white p-6"><div className="flex items-center gap-2"><History className="text-brand" size={20} /><h2 className="text-xl font-bold">Service progress</h2></div><div className="relative mt-6 ml-2 border-l-2 border-brand-soft">{workOrder.statusHistory.length ? workOrder.statusHistory.map((entry) => <article className="relative pb-6 pl-6 last:pb-0" key={entry.id}><span className="absolute -left-[7px] top-1 size-3 rounded-full bg-brand ring-4 ring-white" /><div className="flex flex-wrap justify-between gap-2"><div><p className="font-bold">{entry.serviceStage.displayName}</p><p className="mt-1 text-sm text-muted">{formatEnumLabel(entry.condition)}</p></div><time className="text-xs text-muted">{formatDate(entry.createdAt)}</time></div></article>) : <p className="pl-6 text-sm text-muted">Service progress will appear here.</p>}</div></div><div className="border border-line bg-surface p-6"><div className="flex items-center gap-2"><CalendarDays className="text-brand" size={20} /><h2 className="text-xl font-bold">Repair details</h2></div><dl className="mt-5 grid gap-4 text-sm"><div><dt className="text-muted">Received</dt><dd className="mt-1 font-bold">{workOrder.receivedAt ? formatDate(workOrder.receivedAt) : "-"}</dd></div><div><dt className="text-muted">Current service stage</dt><dd className="mt-1 font-bold">{workOrder.serviceStage.displayName}</dd></div><div><dt className="text-muted">Equipment</dt><dd className="mt-1 font-bold">{workOrder.equipment.productModel}</dd></div></dl></div></section><section className="mt-8 border border-line bg-white p-6"><div className="flex items-center gap-2"><ClipboardCheck className="text-brand" size={20} /><h2 className="text-xl font-bold">Service updates</h2></div>{workOrder.updates.length ? <div className="mt-5 divide-y divide-line border-y border-line">{workOrder.updates.map((update) => <article className="py-5" key={update.id}><div className="flex flex-wrap justify-between gap-3"><h3 className="font-bold">{update.title}</h3><time className="text-xs text-muted">{formatDate(update.createdAt)}</time></div><p className="mt-3 whitespace-pre-line leading-7 text-body">{update.body}</p></article>)}</div> : <p className="mt-5 text-sm text-muted">Your service team has not posted an update yet.</p>}</section>{workOrder.findings.length > 0 && <section className="mt-8 border border-line bg-paper p-6"><div className="flex items-center gap-2"><Lightbulb className="text-brand" size={20} /><h2 className="text-xl font-bold">Findings</h2></div><div className="mt-5 divide-y divide-line border-y border-line">{workOrder.findings.map((finding) => <article className="py-5" key={finding.id}><div className="flex flex-wrap justify-between gap-3"><h3 className="font-bold">{finding.title}</h3><time className="text-xs text-muted">{formatDate(finding.createdAt)}</time></div><p className="mt-3 whitespace-pre-line leading-7 text-body">{finding.body}</p></article>)}</div></section>}<section className="mt-8 grid gap-6 lg:grid-cols-2"><div className="border border-line bg-white p-6"><div className="flex items-center gap-2"><Camera className="text-brand" size={20} /><h2 className="text-xl font-bold">Service photos</h2></div>{photos.length ? <div className="mt-5 grid grid-cols-2 gap-3">{photos.map((attachment) => <a className="border border-line p-3 hover:border-brand" href={`/api/attachments/${attachment.id}`} key={attachment.id} target="_blank" rel="noreferrer"><Image className="aspect-square w-full object-contain" src={`/api/attachments/${attachment.id}?variant=thumbnail`} alt={attachment.caption || attachment.fileName} width={480} height={480} unoptimized /><p className="mt-3 break-words text-sm font-bold">{attachment.caption || attachment.fileName}</p><p className="mt-1 text-xs text-muted">{attachment.photoCategory ? formatEnumLabel(attachment.photoCategory) : "Service photo"}</p></a>)}</div> : <p className="mt-5 text-sm text-muted">Customer-visible service photos will appear here.</p>}</div><div className="border border-line bg-white p-6"><div className="flex items-center gap-2"><FileText className="text-brand" size={20} /><h2 className="text-xl font-bold">Documents</h2></div>{documents.length ? <div className="mt-5 divide-y divide-line border-y border-line">{documents.map((document) => <a className="block py-4 hover:text-brand" href={`/api/attachments/${document.id}`} key={document.id}><p className="font-bold">{document.fileName}</p><p className="mt-1 text-xs text-muted">{document.documentType ? documentTypeLabels[document.documentType] : "Service document"} · {Math.ceil(document.sizeBytes / 1024)} KB</p></a>)}</div> : <p className="mt-5 text-sm text-muted">Customer-visible documents will appear here when available.</p>}</div></section><section className="mt-8 border-t border-line pt-6"><div className="flex items-center gap-2"><Activity className="text-brand" size={20} /><h2 className="text-xl font-bold">Customer timeline</h2></div>{workOrder.auditEvents.length ? <div className="mt-5 divide-y divide-line border-y border-line">{workOrder.auditEvents.map((event) => <article className="flex flex-wrap justify-between gap-3 py-4" key={event.id}><p className="font-bold">{activityLabel(event.eventType)}</p><time className="text-xs text-muted">{formatDate(event.createdAt)}</time></article>)}</div> : <p className="mt-5 text-sm text-muted">Customer-visible activity will appear here.</p>}</section></div></main>;
+  const steps = progressSteps(stages, workOrder.serviceStage.sequence);
+  // The date each step was first reached, from the stage history.
+  const stepDates: Record<string, string> = {};
+  for (const entry of workOrder.statusHistory) {
+    const label = customerStageLabel(entry.serviceStage);
+    if (!stepDates[label]) stepDates[label] = shortDay.format(entry.createdAt);
+  }
+  const notice = customerConditionNotices[workOrder.condition];
+  const photos = workOrder.attachments.filter((attachment) => attachment.kind === "PHOTO");
+  // The final service report comes first; it's the document customers come back for.
+  const documents = workOrder.attachments.filter((attachment) => attachment.kind === "DOCUMENT").sort((a, b) => Number(b.documentType === "FINAL_SERVICE_REPORT") - Number(a.documentType === "FINAL_SERVICE_REPORT"));
+  const contact = workOrder.serviceCenter;
+  const facts: [string, ReactNode][] = [
+    ["Received", workOrder.receivedAt && day.format(workOrder.receivedAt)],
+    ["Expected by", !workOrder.completedAt && workOrder.promisedAt && calendarDay.format(workOrder.promisedAt)],
+    ["Completed", workOrder.completedAt && day.format(workOrder.completedAt)],
+    ["Your PO", workOrder.customerPurchaseOrder],
+    ["RMA", workOrder.rmaReference],
+    ["Company", workOrder.company.name],
+  ];
+
+  return (
+    <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+      <Link className="flex w-fit items-center gap-2 text-sm font-bold text-brand" href="/portal"><ArrowLeft size={16} /> My repairs</Link>
+
+      <header className="mt-5 border-b border-line pb-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className={eyebrowStyles}>REPAIR {workOrder.workOrderNumber}</p>
+            <h1 className="mt-2 text-3xl font-bold">{workOrder.summary}</h1>
+            <p className="mt-2 text-muted"><Link className="font-bold text-ink hover:text-brand" href={`/portal/equipment/${workOrder.equipment.id}`}>{workOrder.equipment.productModel} · Serial {workOrder.equipment.serialNumber}</Link></p>
+          </div>
+          <Badge tone={workOrder.customerFacingStatus === "COMPLETED" ? "success" : "brand"}>{workOrder.condition === "CANCELLED" ? "Cancelled" : customerStatusLabels[workOrder.customerFacingStatus]}</Badge>
+        </div>
+      </header>
+
+      {notice && (
+        <div className="mt-6 flex items-start gap-3 border-l-4 border-brand bg-brand-soft px-4 py-3">
+          <AlertCircle className="mt-0.5 shrink-0 text-danger" size={18} />
+          <div><p className="font-bold">{notice.title}</p><p className="mt-0.5 text-sm text-body">{notice.detail}</p></div>
+        </div>
+      )}
+
+      {workOrder.condition !== "CANCELLED" && (
+        <section aria-label="Repair progress" className={`${panelStyles} mt-6`}>
+          <ProgressTracker dates={stepDates} steps={steps} />
+        </section>
+      )}
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <div className="grid gap-6">
+          <Section icon={<MessageSquareText className="text-brand" size={20} />} title="Updates from your service team">
+            {workOrder.updates.length ? (
+              <ol className="divide-y divide-line border-y border-line">
+                {workOrder.updates.map((update, index) => (
+                  <li className="py-4" key={update.id}>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <h3 className="flex items-center gap-2 font-bold">{update.title}{index === 0 && <Badge tone="brand">Latest</Badge>}</h3>
+                      <time className="text-xs text-muted" dateTime={update.createdAt.toISOString()}>{day.format(update.createdAt)}</time>
+                    </div>
+                    <p className="mt-2 whitespace-pre-line leading-7 text-body">{update.body}</p>
+                  </li>
+                ))}
+              </ol>
+            ) : <p className="text-sm text-muted">No updates yet. Your service team posts here as the repair moves along.</p>}
+          </Section>
+
+          {workOrder.findings.length > 0 && (
+            <Section icon={<Lightbulb className="text-brand" size={20} />} title="What we found">
+              <ul className="divide-y divide-line border-y border-line">
+                {workOrder.findings.map((finding) => (
+                  <li className="py-4" key={finding.id}>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-bold">{finding.title}</h3><time className="text-xs text-muted" dateTime={finding.createdAt.toISOString()}>{day.format(finding.createdAt)}</time></div>
+                    <p className="mt-2 whitespace-pre-line leading-7 text-body">{finding.body}</p>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+
+          <Section icon={<Camera className="text-brand" size={20} />} title={`Photos${photos.length ? ` (${photos.length})` : ""}`}>
+            {photos.length
+              ? <CustomerPhotoGallery photos={photos.map((photo) => ({ id: photo.id, fileName: photo.fileName, caption: photo.caption, photoCategory: photo.photoCategory, takenOn: day.format(photo.uploadedAt) }))} />
+              : <p className="text-sm text-muted">No photos have been shared yet.</p>}
+          </Section>
+        </div>
+
+        <aside className="grid gap-6">
+          <Section
+            actions={workOrder.attachments.length > 1 && <a className={buttonStyles({ variant: "outline", size: "sm" })} href={`/api/work-orders/${workOrder.id}/files`}><Download size={15} /> Download all</a>}
+            icon={<FileText className="text-brand" size={20} />}
+            title="Documents"
+          >
+            {documents.length ? (
+              <ul className="divide-y divide-line border-y border-line">
+                {documents.map((document) => {
+                  const isFinalReport = document.documentType === "FINAL_SERVICE_REPORT";
+                  return (
+                    <li key={document.id}>
+                      <a className={`group flex items-start gap-3 py-3 ${isFinalReport ? "-mx-3 bg-surface px-3" : ""}`} href={`/api/attachments/${document.id}`}>
+                        {isFinalReport ? <Star className="mt-0.5 shrink-0 text-brand" size={17} /> : <FileText className="mt-0.5 shrink-0 text-muted" size={17} />}
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-bold group-hover:text-brand">{document.documentType ? documentTypeLabels[document.documentType] : "Document"}</span>
+                          <span className="block break-words text-xs text-muted">{document.fileName} · {fileSize(document.sizeBytes)}</span>
+                        </span>
+                        <Download className="mt-0.5 shrink-0 text-muted group-hover:text-brand" size={16} />
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : <p className="text-sm text-muted">No documents have been shared yet. Quotes, reports and invoices appear here.</p>}
+            {workOrder.attachments.length > 1 && <p className="mt-3 text-xs text-muted">Download all gives you one zip file with every document and photo on this repair.</p>}
+          </Section>
+
+          <Section icon={<Info className="text-brand" size={20} />} title="Details">
+            <dl className="grid gap-3 text-sm">
+              {facts.filter(([, value]) => value).map(([label, value]) => (
+                <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-3" key={label}><dt className="text-muted">{label}</dt><dd className="break-words font-bold">{value}</dd></div>
+              ))}
+            </dl>
+          </Section>
+
+          {contact && (contact.contactEmail || contact.contactPhone) && (
+            <Section icon={<Phone className="text-brand" size={20} />} title="Questions about this repair?">
+              <p className="text-sm text-muted">Contact the {contact.name} and mention repair {workOrder.workOrderNumber}.</p>
+              <ul className="mt-3 grid gap-2 text-sm font-bold">
+                {contact.contactPhone && <li><a className="flex items-center gap-2 hover:text-brand" href={`tel:${contact.contactPhone.replace(/[^\d+]/g, "")}`}><Phone className="text-muted" size={15} /> {contact.contactPhone}</a></li>}
+                {contact.contactEmail && <li><a className="flex items-center gap-2 break-all hover:text-brand" href={`mailto:${contact.contactEmail}?subject=${encodeURIComponent(`Repair ${workOrder.workOrderNumber}`)}`}><Mail className="shrink-0 text-muted" size={15} /> {contact.contactEmail}</a></li>}
+              </ul>
+            </Section>
+          )}
+        </aside>
+      </div>
+    </main>
+  );
 }

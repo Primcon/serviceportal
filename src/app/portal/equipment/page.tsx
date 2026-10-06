@@ -1,17 +1,19 @@
 import Link from "next/link";
-import { Package, Search } from "lucide-react";
+import { ArrowUpRight, Package, Search } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
+import { buttonStyles, fieldStyles } from "@/components/ui/styles";
 import { listCustomerEquipment } from "@/features/work-orders/customer-queries";
-import { pageFromParams } from "@/lib/pagination";
+import { shopTimeZone } from "@/lib/dates";
+import { customerStatusLabels } from "@/lib/labels";
+import { firstParam, pageFromParams, type SearchParams } from "@/lib/pagination";
 import { getRequestActor } from "@/services/request-actor";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Record<string, string | string[] | undefined>;
-
-function firstParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
+const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
 
 export default async function CustomerEquipmentIndexPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
@@ -21,5 +23,44 @@ export default async function CustomerEquipmentIndexPage({ searchParams }: { sea
     ? await listCustomerEquipment(actor.identitySubject, search, { page: pageFromParams(params) })
     : { equipment: [], total: 0, page: 1, pageSize: 20 };
 
-  return <main className="min-h-screen bg-paper px-5 py-10 text-ink sm:px-10"><div className="mx-auto max-w-5xl"><div className="border-b border-line pb-7"><p className="text-sm font-bold tracking-[0.1em] text-brand">MY EQUIPMENT</p><h1 className="mt-2 text-4xl font-bold">Equipment and service history</h1><p className="mt-3 max-w-2xl text-muted">Find the equipment available to your account and open its repair history.</p></div><section aria-label="Equipment search" className="mt-6 border border-line bg-surface p-5"><div className="flex items-center gap-2 text-sm font-bold text-body"><Search className="text-brand" size={17} /> Find equipment</div><form key={search} method="get" className="mt-4 flex gap-2"><label className="sr-only" htmlFor="customer-equipment-search">Search equipment</label><div className="relative flex-1"><Search className="absolute left-3 top-3 text-muted" size={17} /><input className="w-full border border-line bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-brand" defaultValue={search} id="customer-equipment-search" name="search" placeholder="Model or serial number" /></div><button className="bg-brand px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-strong">Search</button>{search && <Link className="border border-brand px-3 py-2.5 text-sm font-bold text-brand" href="/portal/equipment">Reset</Link>}</form></section><section className="mt-8"><div className="flex items-end justify-between gap-3 border-b border-line pb-4"><div><h2 className="text-xl font-bold">Equipment records</h2><p className="mt-1 text-sm text-muted">Service assets available to your customer account.</p></div><p className="text-sm font-bold text-muted">{total} result{total === 1 ? "" : "s"}</p></div>{equipment.length ? <div className="mt-5 border-y border-line">{equipment.map((item) => <Link className="group grid gap-4 border-b border-line bg-white px-5 py-5 last:border-b-0 hover:bg-surface sm:grid-cols-[minmax(0,1fr)_auto]" href={`/portal/equipment/${item.id}`} key={item.id}><div><h3 className="text-lg font-bold group-hover:text-brand">{item.productModel}</h3><p className="mt-2 text-sm text-muted">Serial {item.serialNumber} · {item.company.name}</p></div>{item.workOrders[0] ? <div className="text-left sm:text-right"><span className="bg-brand-soft px-2 py-1 text-xs font-bold text-danger">{item.workOrders[0].customerFacingStatus.replaceAll("_", " ")}</span><p className="mt-2 text-xs text-muted">Updated {item.workOrders[0].updatedAt.toLocaleDateString()}</p></div> : <p className="text-sm text-muted">No service history</p>}</Link>)}<Pagination label="pumps" page={page} pageSize={pageSize} params={params} pathname="/portal/equipment" total={total} /></div> : <div className="mt-5 border border-dashed border-line bg-white px-5 py-14 text-center"><Package className="mx-auto text-muted" size={28} /><p className="mt-4 font-bold">{search ? "No equipment matches this search." : "No equipment is available yet."}</p><p className="mt-1 text-sm text-muted">{search ? "Try another model or serial number." : "Equipment records will appear here as they are assigned to your account."}</p></div>}</section></div></main>;
+  return (
+    <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+      <PageHeader description="Every piece of equipment we've serviced for you, with its repair history and manuals." eyebrow="MY EQUIPMENT" icon={<Package size={16} />} title="Your equipment" />
+
+      <form className="mt-6 flex flex-wrap gap-2" key={search} method="get" role="search">
+        <label className="sr-only" htmlFor="customer-equipment-search">Search equipment</label>
+        <div className="relative min-w-64 flex-1"><Search className="absolute left-3 top-3 text-muted" size={17} /><input className={`${fieldStyles} pl-10`} defaultValue={search} id="customer-equipment-search" name="search" placeholder="Model or serial number" /></div>
+        <button className={buttonStyles({ size: "sm" })}>Search</button>
+        {search && <Link className={buttonStyles({ variant: "outline", size: "sm" })} href="/portal/equipment">Reset</Link>}
+        <p className="ml-auto self-center text-sm font-bold text-muted">{total} item{total === 1 ? "" : "s"}</p>
+      </form>
+
+      <section className="mt-5 border-y border-line bg-paper">
+        {equipment.length ? equipment.map((item) => {
+          const latest = item.workOrders[0];
+          return (
+            <Link className="group grid gap-3 border-b border-line px-5 py-5 last:border-b-0 hover:bg-surface sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center" href={`/portal/equipment/${item.id}`} key={item.id}>
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold group-hover:text-brand">{item.productModel}</h2>
+                <p className="mt-1 text-sm text-muted">Serial {item.serialNumber} · {item.company.name}</p>
+              </div>
+              {latest
+                ? <p className="flex flex-wrap items-center gap-2 text-sm text-muted sm:justify-end"><Badge tone={latest.customerFacingStatus === "COMPLETED" ? "success" : "brand"}>{customerStatusLabels[latest.customerFacingStatus]}</Badge> Last repair updated {day.format(latest.updatedAt)}</p>
+                : <p className="text-sm text-muted">No repairs on record</p>}
+              <ArrowUpRight className="hidden text-brand sm:block" size={18} />
+            </Link>
+          );
+        }) : (
+          <div className="p-5">
+            <EmptyState
+              description={search ? "Try another model or serial number." : "Equipment appears here once it has been received for service."}
+              icon={<Package size={24} />}
+              title={search ? "No equipment matches this search." : "No equipment yet."}
+            />
+          </div>
+        )}
+        <Pagination label="items" page={page} pageSize={pageSize} params={params} pathname="/portal/equipment" total={total} />
+      </section>
+    </main>
+  );
 }

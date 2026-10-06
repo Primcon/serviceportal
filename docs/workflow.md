@@ -18,6 +18,16 @@
 
 Stages are database configuration records, not embedded feature code.
 
+## What Customers See
+
+Customers never see internal stage names, conditions or handoff notes.
+
+- **Progress tracker.** Each stage has a `customerLabel`, the step customers are shown. Stages that share a label are one step, so the 13 standard stages appear as seven: Received, Inspection, Quote, Repair, Testing, Shipping, Complete. Managers edit the labels on the Workflow page; a stage with no label shows its own name. The tracker dates each step from the first time the job reached it.
+- **Holding conditions** appear as a plain notice (`customerConditionNotices` in `src/features/customer/progress.ts`), such as "Waiting on parts" or "We need something from you".
+- **The repair page** shows updates, shared findings, shared photos grouped by the point in the repair they were taken, shared documents with the final service report first, the promised date as "Expected by", and the service center's contact details when they're set in Settings.
+- **Download all** (`/api/work-orders/<id>/files`) is one zip of every shared document and photo on a repair. Photos go in as their viewing copies.
+- Customers with more than one company can filter their repairs by company.
+
 ## Customer Status
 
 Received and Intake Documentation map to Open. Initial Inspection, Evaluation, Quote Preparation, Repair Authorized through Shipped map to In Progress. Awaiting Customer Approval maps to Waiting. Completed maps to Completed.

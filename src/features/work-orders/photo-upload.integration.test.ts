@@ -2,7 +2,9 @@ import "dotenv/config";
 import sharp from "sharp";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaClient, UserRole } from "@prisma/client";
+import { unzipSync } from "fflate";
 import { GET as customerFile } from "@/app/api/attachments/[attachmentId]/route";
+import { GET as customerFiles } from "@/app/api/work-orders/[workOrderId]/files/route";
 import { GET as originalStatus, POST as requestOriginal } from "@/app/api/internal/attachments/[attachmentId]/original/route";
 import { GET as staffFile } from "@/app/api/internal/attachments/[attachmentId]/route";
 import { POST as uploadPhoto } from "@/app/api/internal/work-orders/[workOrderId]/photos/route";
@@ -133,6 +135,32 @@ describe("viewing a photo", () => {
     const customerAsksForOriginal = await customerFile(...attachmentRequest(id, "?variant=original"));
     expect(await customerAsksForOriginal.text()).toBe(`file at ${photo.optimizedStorageKey}`);
     expect(vi.mocked(readPrivateFile)).not.toHaveBeenCalledWith(photo.originalStorageKey);
+  });
+
+  it("puts only the files shared with the customer into their download", async () => {
+    const uploaded = async (visibility: string) => (await (await upload(await jpeg(), undefined, { photoCategory: "TESTING", visibility })).json() as { id: string }).id;
+    const [sharedId, staffOnlyId] = [await uploaded("CUSTOMER_VISIBLE"), await uploaded("INTERNAL_ONLY")];
+    const uploader = await prisma.user.findFirstOrThrow({ where: { identitySubject: "development:service-manager" } });
+    const document = (visibility: "CUSTOMER_VISIBLE" | "INTERNAL_ONLY", fileName: string) => prisma.attachment.create({ data: { workOrderId, kind: "DOCUMENT", visibility, documentType: "FINAL_SERVICE_REPORT", originalStorageKey: `doc/${fileName}`, fileName, mimeType: "application/pdf", sizeBytes: 10, uploadedById: uploader.id } });
+    await Promise.all([document("CUSTOMER_VISIBLE", `Report ${suffix}.pdf`), document("INTERNAL_ONLY", `Cost sheet ${suffix}.pdf`)]);
+    const sharedPhoto = await prisma.attachment.findUniqueOrThrow({ where: { id: sharedId } });
+    const staffPhoto = await prisma.attachment.findUniqueOrThrow({ where: { id: staffOnlyId } });
+    vi.mocked(readPrivateFile).mockImplementation(async (key) => Buffer.from(`file at ${key}`));
+
+    const response = await customerFiles(new Request(`${origin}/x`), { params: Promise.resolve({ workOrderId }) });
+    expect(response.headers.get("content-type")).toBe("application/zip");
+    const entries = unzipSync(new Uint8Array(await response.arrayBuffer()));
+    const names = Object.keys(entries);
+    expect(names).toContain(`Documents/Report ${suffix}.pdf`);
+    expect(names.some((name) => name.includes("Cost sheet"))).toBe(false);
+    // Photos go in as their viewing copies, never the archived originals.
+    expect(names.filter((name) => name.startsWith("Photos/")).every((name) => name.endsWith(".webp"))).toBe(true);
+    const requested = vi.mocked(readPrivateFile).mock.calls.map(([key]) => key);
+    expect(requested).toContain(sharedPhoto.optimizedStorageKey);
+    expect(requested).not.toContain(sharedPhoto.originalStorageKey);
+    expect(requested).not.toContain(staffPhoto.optimizedStorageKey);
+
+    expect((await customerFiles(new Request(`${origin}/x`), { params: Promise.resolve({ workOrderId: crypto.randomUUID() }) })).status).toBe(404);
   });
 
   it("retrieves an archived original only when staff ask, then serves the retrieved copy", async () => {

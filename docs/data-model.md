@@ -36,6 +36,8 @@ Work orders carry the intake details from job order form 852-01-01: tool ID, oil
 
 Work orders also hold the form's parts and quote lines: `partsRequired`, `partsKit`, `extraLaborHours`, `quotedAt`, `partsOrderedAt`, `partsReceivedAt` and `partsReceivedById`.
 
+`ServiceStage.customerLabel` is the step customers see for a stage, and `ServiceCenter.contactEmail` / `contactPhone` are shown to customers on their repairs.
+
 ## Workflow and Visibility
 
 `ServiceStage` is editable configuration data with sequence and customer-status mapping. `WorkOrder.condition` represents temporary conditions separately. `WorkOrderStatusHistory` records each stage/condition change.
