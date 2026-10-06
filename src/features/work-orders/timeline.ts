@@ -6,6 +6,7 @@ export type TimelineInput = {
   statusHistory: { id: string; createdAt: Date; condition: WorkOrderCondition; note: string | null; serviceStage: { displayName: string; customerFacingStatus: CustomerFacingStatus }; changedBy: Actor }[];
   updates: { id: string; createdAt: Date; title: string; body: string; visibility: RecordVisibility; notifyCustomer: boolean; createdBy: Actor }[];
   findings: { id: string; createdAt: Date; title: string; body: string; visibility: RecordVisibility; createdBy: Actor }[];
+  assignments?: { id: string; createdAt: Date; note: string | null; assignedTo: Actor; assignedBy: Actor }[];
   attachments: { id: string; kind: "PHOTO" | "DOCUMENT"; uploadedAt: Date; fileName: string; photoCategory: PhotoCategory | null; documentType: DocumentType | null; visibility: RecordVisibility; uploadedById: string; uploadedBy: Actor }[];
 };
 
@@ -14,6 +15,7 @@ export type TimelineEntry =
   | { kind: "customer-update"; id: string; at: Date; actor: string; title: string; body: string; emailed: boolean }
   | { kind: "internal-note"; id: string; at: Date; actor: string; body: string }
   | { kind: "finding"; id: string; at: Date; actor: string; title: string; body: string; shared: boolean }
+  | { kind: "handoff"; id: string; at: Date; actor: string; to: string | null; note: string | null }
   | { kind: "photos"; id: string; at: Date; actor: string; category: PhotoCategory | null; photoIds: string[]; sharedCount: number }
   | { kind: "document"; id: string; at: Date; actor: string; fileName: string; documentType: DocumentType | null; shared: boolean };
 
@@ -36,6 +38,9 @@ export function buildTimeline(input: TimelineInput): TimelineEntry[] {
     entries.push(update.visibility === "CUSTOMER_VISIBLE"
       ? { kind: "customer-update", id: update.id, at: update.createdAt, actor: actorName(update.createdBy), title: update.title, body: update.body, emailed: update.notifyCustomer }
       : { kind: "internal-note", id: update.id, at: update.createdAt, actor: actorName(update.createdBy), body: update.body });
+  }
+  for (const assignment of input.assignments ?? []) {
+    entries.push({ kind: "handoff", id: assignment.id, at: assignment.createdAt, actor: actorName(assignment.assignedBy), to: assignment.assignedTo?.displayName ?? null, note: assignment.note });
   }
   for (const finding of input.findings) {
     entries.push({ kind: "finding", id: finding.id, at: finding.createdAt, actor: actorName(finding.createdBy), title: finding.title, body: finding.body, shared: finding.visibility === "CUSTOMER_VISIBLE" });

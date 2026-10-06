@@ -8,6 +8,7 @@ import { assertActiveUser, isAllowedInternalRole } from "@/services/authorizatio
 const internalRoles = [
   UserRole.PORTAL_ADMINISTRATOR,
   UserRole.VACTECH_MANAGER,
+  UserRole.VACTECH_QA,
   UserRole.VACTECH_SERVICE_USER,
 ];
 

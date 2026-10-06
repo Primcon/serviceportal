@@ -59,8 +59,9 @@ export default function UserDirectory({ users, companies }: { users: User[]; com
                   <Field label="Internal role" htmlFor={`${dialogId}-role`} hint="Roles are managed here. Changing a role in Entra has no effect after an employee's first sign-in.">
                     <select className={fieldStyles} defaultValue={selectedUser.internalRole} id={`${dialogId}-role`} key={selectedUser.internalRole} name="internalRole">
                       <option value="PORTAL_ADMINISTRATOR">Portal administrator</option>
-                      <option value="VACTECH_MANAGER">VacTech manager</option>
-                      <option value="VACTECH_SERVICE_USER">VacTech service user</option>
+                      <option value="VACTECH_MANAGER">Manager</option>
+                      <option value="VACTECH_QA">Quality assurance</option>
+                      <option value="VACTECH_SERVICE_USER">Technician</option>
                     </select>
                   </Field>
                   <button className={buttonStyles({ variant: "secondary", className: "w-fit" })}>Update role</button>

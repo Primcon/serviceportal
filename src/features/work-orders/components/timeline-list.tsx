@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Camera, EyeOff, FileText, Flag, Lightbulb, MessageSquareText, Send } from "lucide-react";
+import { ArrowRightLeft, Camera, EyeOff, FileText, Flag, Lightbulb, MessageSquareText, Send } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { customerStatusLabels, documentTypeLabels, formatEnumLabel, photoCategoryLabels } from "@/lib/labels";
@@ -54,6 +54,12 @@ export function TimelineList({ entries, workOrderId }: { entries: TimelineEntry[
             return (
               <Entry icon={<MessageSquareText size={14} />} internal key={`note-${entry.id}`} meta={meta} title="Note" tone="muted">
                 <Body text={entry.body} />
+              </Entry>
+            );
+          case "handoff":
+            return (
+              <Entry icon={<ArrowRightLeft size={14} />} internal key={`handoff-${entry.id}`} meta={meta} title={entry.to === null ? "Returned to the queue" : entry.to === entry.actor ? `${entry.actor} took this job` : `Handed to ${entry.to}`} tone="muted">
+                {entry.note && <Body text={entry.note} />}
               </Entry>
             );
           case "finding":

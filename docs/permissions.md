@@ -1,11 +1,27 @@
 # Permissions
 
-| Role | MVP capability |
-| --- | --- |
-| Portal Administrator | Full access and system administration |
-| VacTech Manager | Work orders, equipment, customers, users, access requests; renaming, archiving and merging customers and pumps; the model catalog and its manuals |
-| VacTech Service User | Work orders, equipment (including corrections to a pump's details), updates, photos, documents, findings, allowed stages; reading manuals |
-| Customer User | Read-only customer-visible records for authorized company data |
+The portal has four staff roles and one customer role. Each staff role includes everything the roles to its right can do.
+
+| What | Administrator | Manager | Quality assurance | Technician |
+| --- | :---: | :---: | :---: | :---: |
+| See work orders, pumps, models and manuals | Yes | Yes | Yes | Yes |
+| Open work orders, add pumps, correct a pump's details | Yes | Yes | Yes | Yes |
+| Post updates, notes and findings; upload photos and documents | Yes | Yes | Yes | Yes |
+| Change a work order's stage and condition | Yes | Yes | Yes | Yes |
+| Take a job, hand it to someone, return it to the queue | Yes | Yes | Yes | Yes |
+| Delete a photo | Any | Any | Own | Own |
+| Sign the steps reserved for QA (from Phase 2, milestone 2) | Yes | Yes | Yes | No |
+| Change document visibility; delete documents | Yes | Yes | No | No |
+| Customers and locations: add, rename, archive, merge | Yes | Yes | No | No |
+| Archive or merge pumps | Yes | Yes | No | No |
+| Model catalog: add, correct, retire, merge; upload manuals | Yes | Yes | No | No |
+| Users, access requests and customer access | Yes | Yes | No | No |
+| Workflow stages, settings, reports, audit log | Yes | Yes | No | No |
+| Change or disable an administrator | Yes | No | No | No |
+
+**Customers** see only customer-visible records for the companies or locations they've been granted, and can't change anything except their own notification preferences.
+
+In the code the roles are `PORTAL_ADMINISTRATOR`, `VACTECH_MANAGER`, `VACTECH_QA`, `VACTECH_SERVICE_USER` (Technician) and `CUSTOMER_USER`.
 
 ## Rules
 
@@ -22,9 +38,9 @@
 Employee roles are managed in the portal on the Users page. Microsoft Entra decides who may sign in; the portal decides what they can do.
 
 - Turn on **Assignment required** for the employee enterprise application in Entra. Only assigned employees can sign in. Removing an assignment blocks sign-in.
-- On an employee's first sign-in, their Entra app role (`Portal.Administrator`, `VacTech.Manager`, or `VacTech.ServiceUser`) sets their starting portal role. An employee without one of these roles on first sign-in is refused.
+- On an employee's first sign-in, their Entra app role (`Portal.Administrator`, `VacTech.Manager`, `VacTech.QualityAssurance`, or `VacTech.ServiceUser`) sets their starting portal role. An employee without one of these roles on first sign-in is refused.
 - After that, the portal role is the only one that counts. Changing the Entra app role has no effect, and an employee no longer needs one.
-- Managers can change the roles and access of managers and service users. Only a portal administrator can change another administrator, and the last active administrator can't be demoted or disabled.
+- Managers can change the roles and access of managers, QA and technicians. Only a portal administrator can change another administrator, and the last active administrator can't be demoted or disabled.
 
 ## File Access
 

@@ -227,6 +227,7 @@ export function startingEmployeeRole(value: unknown): UserRole | null {
   const roles = Array.isArray(value) ? value.filter((role): role is string => typeof role === "string") : [];
   if (roles.includes("Portal.Administrator")) return UserRole.PORTAL_ADMINISTRATOR;
   if (roles.includes("VacTech.Manager")) return UserRole.VACTECH_MANAGER;
+  if (roles.includes("VacTech.QualityAssurance")) return UserRole.VACTECH_QA;
   if (roles.includes("VacTech.ServiceUser")) return UserRole.VACTECH_SERVICE_USER;
   return null;
 }
