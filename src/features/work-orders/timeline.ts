@@ -3,7 +3,7 @@ import type { CustomerFacingStatus, DocumentType, PhotoCategory, RecordVisibilit
 type Actor = { displayName: string } | null;
 
 export type TimelineInput = {
-  statusHistory: { id: string; createdAt: Date; condition: WorkOrderCondition; note: string | null; serviceStage: { displayName: string; customerFacingStatus: CustomerFacingStatus }; changedBy: Actor }[];
+  statusHistory: { id: string; createdAt: Date; condition: WorkOrderCondition; note: string | null; overrideReason?: string | null; serviceStage: { displayName: string; customerFacingStatus: CustomerFacingStatus }; changedBy: Actor }[];
   updates: { id: string; createdAt: Date; title: string; body: string; visibility: RecordVisibility; notifyCustomer: boolean; createdBy: Actor }[];
   findings: { id: string; createdAt: Date; title: string; body: string; visibility: RecordVisibility; createdBy: Actor }[];
   assignments?: { id: string; createdAt: Date; note: string | null; assignedTo: Actor; assignedBy: Actor }[];
@@ -11,7 +11,7 @@ export type TimelineInput = {
 };
 
 export type TimelineEntry =
-  | { kind: "status"; id: string; at: Date; actor: string; stage: string; condition: WorkOrderCondition; customerStatus: CustomerFacingStatus; note: string | null; isFirst: boolean }
+  | { kind: "status"; id: string; at: Date; actor: string; stage: string; condition: WorkOrderCondition; customerStatus: CustomerFacingStatus; note: string | null; overrideReason: string | null; isFirst: boolean }
   | { kind: "customer-update"; id: string; at: Date; actor: string; title: string; body: string; emailed: boolean }
   | { kind: "internal-note"; id: string; at: Date; actor: string; body: string }
   | { kind: "finding"; id: string; at: Date; actor: string; title: string; body: string; shared: boolean }
@@ -32,7 +32,7 @@ export function buildTimeline(input: TimelineInput): TimelineEntry[] {
   const oldestStatusId = input.statusHistory.reduce<{ id: string; at: number } | null>((oldest, entry) => (!oldest || entry.createdAt.getTime() < oldest.at ? { id: entry.id, at: entry.createdAt.getTime() } : oldest), null)?.id;
 
   for (const entry of input.statusHistory) {
-    entries.push({ kind: "status", id: entry.id, at: entry.createdAt, actor: actorName(entry.changedBy), stage: entry.serviceStage.displayName, condition: entry.condition, customerStatus: entry.serviceStage.customerFacingStatus, note: entry.note, isFirst: entry.id === oldestStatusId });
+    entries.push({ kind: "status", id: entry.id, at: entry.createdAt, actor: actorName(entry.changedBy), stage: entry.serviceStage.displayName, condition: entry.condition, customerStatus: entry.serviceStage.customerFacingStatus, note: entry.note, overrideReason: entry.overrideReason ?? null, isFirst: entry.id === oldestStatusId });
   }
   for (const update of input.updates) {
     entries.push(update.visibility === "CUSTOMER_VISIBLE"

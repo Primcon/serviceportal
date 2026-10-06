@@ -30,6 +30,10 @@ These are managed on the workspace Settings page. Entries are retired (made inac
 
 Work orders carry the intake details from job order form 852-01-01: tool ID, oil type and weight, reason for service, contaminants, copper/non-copper classification, accessories received, and a customer contact for the repair. They also have a customer PO, RMA reference, promised date, and service center.
 
+## Checklists
+
+`ChecklistTemplate` (form number + revision, one active) has `ChecklistTemplateStep` rows, each tied to a `ServiceStage`. `WorkOrderStepRecord` is a signed step on one work order: who, when, and any reading, item results or note; one per step per work order. See [workflow.md](workflow.md) for the rules.
+
 ## Workflow and Visibility
 
 `ServiceStage` is editable configuration data with sequence and customer-status mapping. `WorkOrder.condition` represents temporary conditions separately. `WorkOrderStatusHistory` records each stage/condition change.
