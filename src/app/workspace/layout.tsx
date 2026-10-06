@@ -14,8 +14,11 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
     : 0;
 
   return (
-    <div className="min-h-screen bg-surface lg:flex">
-      <WorkspaceNavigation badges={{ pendingAccessRequests }} viewer={viewer ? { displayName: viewer.displayName, role: viewer.internalRole } : null} />
+    <div className="min-h-screen bg-surface lg:flex print:block print:min-h-0 print:bg-white">
+      {/* The navigation is left off printed pages, such as the traveler. */}
+      <div className="contents print:hidden">
+        <WorkspaceNavigation badges={{ pendingAccessRequests }} viewer={viewer ? { displayName: viewer.displayName, role: viewer.internalRole } : null} />
+      </div>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );

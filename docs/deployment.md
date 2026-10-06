@@ -25,6 +25,10 @@ docker run --rm -p 3000:3000 vactech-service-portal:local
 
 Do not pass `.env` into the image build. Configure the deployed container with Key Vault-backed environment values. Azure Container Apps should target port `3000` and use the health probes below.
 
+## Time Zone
+
+The container runs in UTC. `APP_TIME_ZONE` (an IANA name, default `America/Phoenix`) sets the zone used for times on server-rendered pages and the printed traveler. Calendar dates such as promised and quoted dates are stored as midnight UTC and never shift.
+
 ## File Storage
 
 Files are kept in one private Blob Storage container. The app's identity needs **Storage Blob Data Contributor** on it.

@@ -34,6 +34,8 @@ Work orders carry the intake details from job order form 852-01-01: tool ID, oil
 
 `ChecklistTemplate` (form number + revision, one active) has `ChecklistTemplateStep` rows, each tied to a `ServiceStage`. `WorkOrderStepRecord` is a signed step on one work order: who, when, and any reading, item results or note; one per step per work order. See [workflow.md](workflow.md) for the rules.
 
+Work orders also hold the form's parts and quote lines: `partsRequired`, `partsKit`, `extraLaborHours`, `quotedAt`, `partsOrderedAt`, `partsReceivedAt` and `partsReceivedById`.
+
 ## Workflow and Visibility
 
 `ServiceStage` is editable configuration data with sequence and customer-status mapping. `WorkOrder.condition` represents temporary conditions separately. `WorkOrderStatusHistory` records each stage/condition change.

@@ -5,10 +5,11 @@ import { notFound } from "next/navigation";
 import { getCustomerWorkOrder } from "@/features/work-orders/customer-queries";
 import { getRequestActor } from "@/services/request-actor";
 import { documentTypeLabels, formatEnumLabel } from "@/lib/labels";
+import { shopTimeZone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
-function formatDate(date: Date) { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date); }
+function formatDate(date: Date) { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone }).format(date); }
 function activityLabel(eventType: string) { return eventType === "work-order.created" ? "Repair record created" : eventType === "work-order.status-changed" ? "Service status updated" : eventType === "service-update.posted" ? "Service update posted" : eventType === "photo.uploaded" ? "Service photo added" : eventType === "document.uploaded" ? "Service document added" : "Service activity recorded"; }
 
 export default async function CustomerWorkOrderPage({ params }: { params: Promise<{ workOrderId: string }> }) {

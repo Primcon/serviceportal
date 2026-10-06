@@ -1,4 +1,4 @@
-import type { CopperClassification, CustomerFacingStatus, DocumentType, PhotoCategory, UserRole } from "@prisma/client";
+import type { CopperClassification, CustomerFacingStatus, DocumentType, PartsKit, PhotoCategory, UserRole } from "@prisma/client";
 
 export const customerStatusLabels: Record<CustomerFacingStatus, string> = {
   OPEN: "Open",
@@ -58,3 +58,9 @@ export const copperClassificationLabels: Record<CopperClassification, string> = 
 export function isElevatedPriority(priority: string | null) {
   return Boolean(priority) && !["standard", "normal"].includes(priority!.trim().toLowerCase());
 }
+
+export const partsKitLabels: Record<PartsKit, string> = {
+  NONE: "No kit",
+  MINOR: "Minor kit",
+  MAJOR: "Major kit",
+};

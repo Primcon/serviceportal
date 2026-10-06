@@ -3,6 +3,7 @@ import { Activity, Search } from "lucide-react";
 import { listInternalAuditEvents } from "@/features/work-orders/internal-queries";
 import { requireWorkspaceUser } from "@/services/page-access";
 import { managerRoles } from "@/features/navigation/workspace-items";
+import { shopTimeZone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ function firstParam(value: string | string[] | undefined) {
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(date);
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: shopTimeZone }).format(date);
 }
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<SearchParams> }) {

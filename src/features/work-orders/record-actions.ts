@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { UserRole } from "@prisma/client";
+import { Prisma, UserRole } from "@prisma/client";
 import { z } from "zod";
-import { detailFields, detailsSchema, optionalText } from "@/features/work-orders/details-schema";
+import { detailFields, detailsSchema, optionalText, partsFields, partsSchema } from "@/features/work-orders/details-schema";
 import { originalRetrievalKey } from "@/features/work-orders/photo-upload";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/lib/action-result";
@@ -84,8 +84,11 @@ export async function postWorkOrderEntry(formData: FormData): Promise<ActionResu
   });
 }
 
+/** A stored value in a form that compares and reads well in the audit log: dates as text, decimals as numbers. */
 function comparable(value: unknown) {
-  return value instanceof Date ? value.toISOString() : value ?? null;
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Prisma.Decimal) return value.toNumber();
+  return value ?? null;
 }
 
 /** Saves a work order's details and intake information, recording exactly what changed. */
@@ -118,6 +121,38 @@ export async function updateWorkOrderDetails(formData: FormData): Promise<Action
 const photoCategories = ["ARRIVAL", "IDENTIFICATION", "INITIAL_CONDITION", "INSPECTION", "DISASSEMBLY", "FINDINGS", "REPAIR", "REPLACEMENT_PARTS", "TESTING", "FINAL_CONDITION", "SHIPPING"] as const;
 
 /** Changes a photo's caption, category, or whether the customer can see it. */
+/**
+ * Saves the parts and quote details: what's needed, the kit, extra labor, and the dates the
+ * customer was quoted and parts were ordered and received. Whoever records the parts as
+ * received is taken as the person who inspected them, unless someone else is chosen.
+ */
+export async function updatePartsAndQuote(formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const workOrderId = z.string().uuid().parse(value(formData, "workOrderId"));
+    const input = partsSchema.parse(Object.fromEntries(partsFields.map((field) => [field, value(formData, field)])));
+    const user = await getActiveInternalUser();
+    await getAuthorizedWorkOrder(workOrderId);
+
+    const changed = await prisma.$transaction(async (transaction) => {
+      const current = await transaction.workOrder.findUniqueOrThrow({ where: { id: workOrderId }, select: Object.fromEntries(partsFields.map((field) => [field, true])) as Record<(typeof partsFields)[number], true> });
+      const data = { ...input, partsReceivedById: input.partsReceivedAt ? input.partsReceivedById ?? user.id : null };
+      if (data.partsReceivedById && data.partsReceivedById !== user.id) {
+        const receiver = await transaction.user.findUnique({ where: { id: data.partsReceivedById }, select: { internalRole: true } });
+        if (!receiver?.internalRole) throw new UserFacingError("Choose the staff member who received the parts.");
+      }
+      const changes = Object.fromEntries(partsFields
+        .filter((field) => comparable(current[field]) !== comparable(data[field]))
+        .map((field) => [field, { from: comparable(current[field]), to: comparable(data[field]) }]));
+      if (!Object.keys(changes).length) return false;
+      await transaction.workOrder.update({ where: { id: workOrderId }, data });
+      await recordAudit(transaction, { workOrderId, actorUserId: user.id, eventType: "work-order.parts-updated", entityType: "WorkOrder", entityId: workOrderId, metadata: changes });
+      return true;
+    });
+    revalidateWorkOrder(workOrderId);
+    return changed ? "Parts and quote saved." : "No changes to save.";
+  });
+}
+
 export async function updatePhoto(formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
     const input = z.object({

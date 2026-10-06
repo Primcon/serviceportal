@@ -44,6 +44,12 @@ The steps of the job order form are a **checklist template** that carries the fo
 - The starting checklist's steps and QA requirements (`src/features/checklists/default-template.ts`) are a first draft from the paper form, to be confirmed by VacTech. The form's parts and quote lines are tracked separately.
 - Work orders opened before checklists existed have none until someone chooses "Start the checklist" on them.
 
+## Parts, Quote and the Traveler
+
+The parts section of the job order form is on the work order: parts required (free text, one per line), kit (none, minor, major), extra labor hours, and the dates the customer was quoted and parts were ordered and received. Whoever records parts as received is taken as the person who inspected them unless someone else is chosen. These don't change the stage or condition by themselves; staff still set "Waiting on parts" or "Awaiting customer".
+
+The **traveler** (`/workspace/work-orders/<id>/traveler`) is the printable job order form: the intake details, the handling warning, every checklist step with the initials, dates and readings already signed in the portal, the parts and quote lines, and the form number and revision in the footer. Unsigned steps print blank to be initialed by hand. A QR code opens the work order (it uses `APP_ORIGIN`). It's sized for one letter page on a typical job; a very long checklist or parts list runs onto a second. A hand-signed copy can be scanned back in as a "Signed traveler" document.
+
 ## Activity
 
 Intake eventually captures equipment identification, serial/nameplate and condition photos, container condition, accessories, paperwork, and visible damage. Completion may advance to Initial Inspection. Creation, uploads, updates, and stage changes generate audited timeline events; customer views show only customer-safe events.

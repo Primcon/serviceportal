@@ -1,4 +1,4 @@
-import { CopperClassification } from "@prisma/client";
+import { CopperClassification, PartsKit } from "@prisma/client";
 import { z } from "zod";
 
 export const optionalText = (max: number) => z.string().trim().max(max).transform((text) => text || null);
@@ -32,4 +32,17 @@ export const detailsSchema = z.object({
   customerContactName: optionalText(120),
   customerContactPhone: optionalText(40),
   customerContactEmail: z.string().trim().max(254).refine((email) => !email || z.string().email().safeParse(email).success, "Enter a valid email address.").transform((email) => email || null),
+});
+
+/** The parts and quote section of the job order form. */
+export const partsFields = ["partsRequired", "partsKit", "extraLaborHours", "quotedAt", "partsOrderedAt", "partsReceivedAt", "partsReceivedById"] as const;
+
+export const partsSchema = z.object({
+  partsRequired: optionalText(2000),
+  partsKit: z.nativeEnum(PartsKit).or(z.literal("")).transform((kit) => kit || null),
+  extraLaborHours: z.string().trim().refine((text) => !text || /^\d{1,3}(\.\d{1,2})?$/.test(text), "Enter hours as a number, such as 2.5.").transform((text) => (text ? Number(text) : null)),
+  quotedAt: optionalDate,
+  partsOrderedAt: optionalDate,
+  partsReceivedAt: optionalDate,
+  partsReceivedById: z.string().trim().uuid().or(z.literal("")).transform((id) => id || null),
 });
