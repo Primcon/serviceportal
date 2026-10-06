@@ -1,36 +1,115 @@
 import Link from "next/link";
-import { Activity, Search } from "lucide-react";
-import { listInternalAuditEvents } from "@/features/work-orders/internal-queries";
-import { requireWorkspaceUser } from "@/services/page-access";
+import { ArrowRight, ScrollText, Search, ShieldAlert } from "lucide-react";
+import { z } from "zod";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Pagination } from "@/components/ui/pagination";
+import { buttonStyles, fieldStyles } from "@/components/ui/styles";
+import { assignableStaff } from "@/features/assignments/assign";
+import { auditCategories, describeDetails, eventTitle, type AuditCategory } from "@/features/audit/describe";
+import { listAuditEvents } from "@/features/audit/queries";
 import { managerRoles } from "@/features/navigation/workspace-items";
 import { shopTimeZone } from "@/lib/dates";
+import { firstParam, pageFromParams, type SearchParams } from "@/lib/pagination";
+import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Record<string, string | string[] | undefined>;
-
-function firstParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: shopTimeZone }).format(date);
-}
+const when = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: shopTimeZone });
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireWorkspaceUser(managerRoles);
-  const resolvedSearchParams = await searchParams;
-  const search = firstParam(resolvedSearchParams.search) ?? "";
-  const requestedPage = Number(firstParam(resolvedSearchParams.page) ?? "1");
-  const page = Number.isFinite(requestedPage) && requestedPage > 0 ? Math.floor(requestedPage) : 1;
-  const { events, total, pageSize } = await listInternalAuditEvents(search, page);
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  const currentPage = Math.min(page, pageCount);
-  const auditHref = (targetPage: number) => `/workspace/audit?${new URLSearchParams({ ...(search ? { search } : {}), page: String(targetPage) })}`;
+  const params = await searchParams;
+  const search = firstParam(params.search)?.trim() ?? "";
+  const categoryParam = firstParam(params.category) ?? "";
+  const category = categoryParam in auditCategories ? categoryParam as AuditCategory : undefined;
+  const actorId = z.string().uuid().safeParse(firstParam(params.actor)).data;
+  const from = firstParam(params.from) ?? "";
+  const to = firstParam(params.to) ?? "";
+  const overridesOnly = firstParam(params.overrides) === "1";
+
+  const [{ events, total, page, pageSize }, staff] = await Promise.all([
+    listAuditEvents({ search, category, actorId, from, to, overridesOnly, page: pageFromParams(params) }),
+    assignableStaff(),
+  ]);
+  const filtersApplied = Boolean(search || category || actorId || from || to || overridesOnly);
 
   return (
-    <main className="min-h-screen bg-surface text-ink">
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8"><div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-7"><div><div className="flex items-center gap-2 text-sm font-bold tracking-[0.1em] text-brand"><Activity size={17} /> AUDIT REVIEW</div><h1 className="mt-2 text-3xl font-bold">System activity</h1><p className="mt-2 text-muted">Review important administrative and service-record changes.</p></div><p className="text-sm text-muted">{total} event{total === 1 ? "" : "s"}</p></div><form method="get" className="mt-6 flex max-w-2xl gap-2"><label className="sr-only" htmlFor="audit-search">Search activity</label><div className="relative flex-1"><Search className="absolute left-3 top-3 text-muted" size={17} /><input id="audit-search" className="w-full border border-line bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-brand" name="search" defaultValue={search} placeholder="Search event, entity, ID, or actor" /></div><button className="bg-brand px-4 py-2.5 text-sm font-bold text-white">Search activity</button></form><section className="mt-6 border-y border-line bg-paper">{events.length ? <div className="divide-y divide-line">{events.map((event) => <article className="grid gap-2 px-5 py-4 sm:grid-cols-[1fr_auto]" key={event.id}><div><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{event.eventType.replace(".", " - ")}</p>{event.customerVisible && <span className="bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand">Customer visible</span>}</div><p className="mt-1 text-sm text-muted">{event.entityType}{event.entityId ? ` · ${event.entityId}` : ""} · {event.actorUser?.displayName ?? "System"}</p>{event.workOrder && <p className="mt-1 text-sm text-body">{event.workOrder.workOrderNumber} · {event.workOrder.summary}</p>}</div><time className="text-xs text-muted">{formatDate(event.createdAt)}</time></article>)}</div> : <p className="px-5 py-10 text-sm text-muted">No activity matches this search.</p>}</section>{total > pageSize && <nav className="mt-5 flex items-center justify-between gap-4" aria-label="Audit event pages"><Link aria-disabled={currentPage === 1} className={currentPage === 1 ? "pointer-events-none border border-line px-3 py-2 text-sm text-subtle" : "border border-brand px-3 py-2 text-sm font-bold text-brand hover:bg-brand hover:text-white"} href={auditHref(currentPage - 1)}>Previous</Link><p className="text-sm text-muted">Page {currentPage} of {pageCount}</p><Link aria-disabled={currentPage === pageCount} className={currentPage === pageCount ? "pointer-events-none border border-line px-3 py-2 text-sm text-subtle" : "border border-brand px-3 py-2 text-sm font-bold text-brand hover:bg-brand hover:text-white"} href={auditHref(currentPage + 1)}>Next</Link></nav>}</div>
+    <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+      <PageHeader
+        description="Who changed what, and when: every sign-off, override, edit, upload, merge and access change. Times are in the shop's time zone."
+        eyebrow="ADMINISTRATION"
+        icon={<ScrollText size={16} />}
+        title="Audit log"
+      />
+
+      <form className="mt-6 grid gap-3 border border-line bg-paper p-5 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]" method="get">
+        <label className="sr-only" htmlFor="audit-search">Search</label>
+        <div className="relative"><Search className="absolute left-3 top-3 text-muted" size={17} /><input className={`${fieldStyles} pl-10`} defaultValue={search} id="audit-search" name="search" placeholder="WIP number, person, or event" /></div>
+        <label className="sr-only" htmlFor="audit-category">Kind of activity</label>
+        <select className={fieldStyles} defaultValue={category ?? ""} id="audit-category" name="category">
+          <option value="">All activity</option>
+          {(Object.keys(auditCategories) as AuditCategory[]).map((key) => <option key={key} value={key}>{auditCategories[key].label}</option>)}
+        </select>
+        <label className="sr-only" htmlFor="audit-actor">Person</label>
+        <select className={fieldStyles} defaultValue={actorId ?? ""} id="audit-actor" name="actor">
+          <option value="">Anyone</option>
+          {staff.map((person) => <option key={person.id} value={person.id}>{person.displayName}</option>)}
+        </select>
+        <label className="flex items-center gap-2 text-sm text-muted">From <input aria-label="From date" className={fieldStyles} defaultValue={from} name="from" type="date" /></label>
+        <label className="flex items-center gap-2 text-sm text-muted">To <input aria-label="To date" className={fieldStyles} defaultValue={to} name="to" type="date" /></label>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:col-span-2 lg:col-span-5">
+          <label className="flex items-center gap-2 text-sm text-muted"><input className="size-4 accent-brand" defaultChecked={overridesOnly} name="overrides" type="checkbox" value="1" /> Manager overrides only</label>
+          <button className={buttonStyles({ size: "sm" })}>Apply filters</button>
+          {filtersApplied && <Link className={buttonStyles({ variant: "outline", size: "sm" })} href="/workspace/audit">Reset</Link>}
+          <p className="ml-auto text-sm font-bold text-muted">{total} event{total === 1 ? "" : "s"}</p>
+        </div>
+      </form>
+
+      <section className="mt-6 border-y border-line bg-paper">
+        {events.length ? (
+          <ul className="divide-y divide-line">
+            {events.map((event) => {
+              const details = describeDetails(event.metadata);
+              const isOverride = event.eventType === "checklist.overridden";
+              return (
+                <li className="grid gap-x-6 gap-y-1 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto]" key={event.id}>
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2 font-bold">
+                      {isOverride && <ShieldAlert className="text-danger" size={16} />}
+                      {eventTitle(event.eventType)}
+                      {event.customerVisible && <Badge tone="brand">Customer can see</Badge>}
+                    </p>
+                    <p className="mt-0.5 text-sm text-muted">
+                      {event.actorUser?.displayName ?? "System"}
+                      {event.workOrder && <> · <Link className="font-bold text-ink hover:text-brand" href={`/workspace/work-orders/${event.workOrder.id}`}>{event.workOrder.workOrderNumber}</Link> <span className="hidden sm:inline">{event.workOrder.summary}</span></>}
+                    </p>
+                    {details.length > 0 && (
+                      <dl className="mt-2 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
+                        {details.map((detail) => (
+                          <div className="contents" key={detail.label}>
+                            <dt className="text-muted">{detail.label}</dt>
+                            <dd className="min-w-0 break-words">
+                              {"from" in detail
+                                ? <><span className="text-muted line-through decoration-subtle">{detail.from}</span> <ArrowRight aria-label="changed to" className="mx-1 inline text-muted" size={13} /> <span className="font-bold">{detail.to}</span></>
+                                : detail.value}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                  </div>
+                  <time className="whitespace-nowrap text-xs text-muted" dateTime={event.createdAt.toISOString()}>{when.format(event.createdAt)}</time>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="p-5"><EmptyState description={filtersApplied ? "Change or clear the filters." : "Activity appears here as the portal is used."} icon={<ScrollText size={24} />} title={filtersApplied ? "No activity matches these filters." : "No activity yet."} /></div>
+        )}
+        <Pagination label="events" page={page} pageSize={pageSize} params={params} pathname="/workspace/audit" total={total} />
+      </section>
     </main>
   );
 }

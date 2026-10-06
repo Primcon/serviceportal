@@ -20,6 +20,9 @@
 	--color-danger-soft: #fff4f4;
 	--color-success: #146c43;
 	--color-success-soft: #e4f5ec;
+	/* Chart series, in fixed order. Checked together for colorblind separation; red stays reserved for warnings. */
+	--color-chart-1: #2a78d6;
+	--color-chart-2: #eb6834;
 
 	--font-sans: var(--font-open-sans), "Segoe UI", system-ui, sans-serif;
 	--font-display: var(--font-roboto), "Segoe UI", system-ui, sans-serif;

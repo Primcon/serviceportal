@@ -50,6 +50,12 @@ The parts section of the job order form is on the work order: parts required (fr
 
 The **traveler** (`/workspace/work-orders/<id>/traveler`) is the printable job order form: the intake details, the handling warning, every checklist step with the initials, dates and readings already signed in the portal, the parts and quote lines, and the form number and revision in the footer. Unsigned steps print blank to be initialed by hand. A QR code opens the work order (it uses `APP_ORIGIN`). It's sized for one letter page on a typical job; a very long checklist or parts list runs onto a second. A hand-signed copy can be scanned back in as a "Signed traveler" document.
 
+## Operations Dashboard and Audit Log
+
+**Operations** (`/workspace/dashboard`, managers) shows live counts: open jobs, jobs past the promised date, jobs waiting on parts or the customer, jobs completed this week, and the median days from receipt to completion over the last 30 days. Below that: open jobs by stage with the typical time in each, jobs opened and completed in each of the last eight weeks (Monday to Sunday in the shop's time zone), open jobs by age, and open jobs per person. Bars link to the matching work order list. Charts use the `chart-1`/`chart-2` colors from `globals.css`, which were checked together for colorblind separation; red is kept for warnings.
+
+**Audit log** (`/workspace/audit`, managers) lists every recorded event in plain language (`src/features/audit/describe.ts` maps event types to titles and details to labels). Edits show as "from → to". It filters by kind of activity, person, date range (shop days) and manager overrides, and searches by WIP number, person or event. A new event type needs a title added there; without one it still shows, as its words.
+
 ## Activity
 
 Intake eventually captures equipment identification, serial/nameplate and condition photos, container condition, accessories, paperwork, and visible damage. Completion may advance to Initial Inspection. Creation, uploads, updates, and stage changes generate audited timeline events; customer views show only customer-safe events.
