@@ -18,13 +18,13 @@ export type GalleryPhoto = {
   caption: string | null;
   photoCategory: PhotoCategory | null;
   visibility: RecordVisibility;
-  uploadedAt: string;
+  /** When it was uploaded, already formatted in the shop's time zone. */
+  uploadedOn: string;
   uploadedBy: string;
   canDelete: boolean;
 };
 
 const categories = Object.keys(photoCategoryLabels) as PhotoCategory[];
-const dateTime = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 type OriginalState = "unknown" | "checking" | "available" | "retrieving" | "archived" | "error";
 
@@ -77,7 +77,7 @@ function PhotoViewer({ photos, index, onNavigate, onClose }: { photos: GalleryPh
   }, [index, onNavigate, photos.length]);
 
   return (
-    <Modal description={`${index + 1} of ${photos.length} · ${photo.uploadedBy} · ${dateTime.format(new Date(photo.uploadedAt))}`} onClose={onClose} size="lg" title={photo.caption || photo.fileName}>
+    <Modal description={`${index + 1} of ${photos.length} · ${photo.uploadedBy} · ${photo.uploadedOn}`} onClose={onClose} size="lg" title={photo.caption || photo.fileName}>
       <div className="relative bg-ink">
         <Image alt={photo.caption || photo.fileName} className="mx-auto max-h-[60vh] w-auto object-contain" height={1200} key={photo.id} src={`/api/internal/attachments/${photo.id}?variant=optimized`} unoptimized width={1600} />
         {index > 0 && <button aria-label="Previous photo" className="absolute left-2 top-1/2 grid size-10 -translate-y-1/2 place-items-center bg-paper/90 text-ink hover:text-brand" onClick={() => onNavigate(index - 1)} type="button"><ChevronLeft size={22} /></button>}
