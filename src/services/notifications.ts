@@ -1,5 +1,7 @@
 import { EmailClient } from "@azure/communication-email";
-import { AccessScope, CustomerFacingStatus, NotificationStatus, Prisma, PrismaClient } from "@prisma/client";
+import { AccessScope, CustomerFacingStatus, NotificationKind, NotificationStatus, Prisma, PrismaClient } from "@prisma/client";
+import { renderNotificationEmail } from "@/services/email-template";
+import { unsubscribeLink } from "@/services/unsubscribe";
 import { customerStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 
@@ -29,17 +31,38 @@ export function emailConfiguration() {
   return { client: new EmailClient(connectionString), senderAddress };
 }
 
-export function customerWorkOrderLink(workOrderId: string) {
-  const origin = process.env.APP_ORIGIN || "http://localhost:3000";
-  return `${origin.replace(/\/$/, "")}/portal/work-orders/${workOrderId}`;
+export function portalOrigin() {
+  return (process.env.APP_ORIGIN || "http://localhost:3000").replace(/\/$/, "");
 }
 
+export function customerWorkOrderPath(workOrderId: string) {
+  return `/portal/work-orders/${workOrderId}`;
+}
+
+export function customerWorkOrderLink(workOrderId: string) {
+  return `${portalOrigin()}${customerWorkOrderPath(workOrderId)}`;
+}
+
+/** The email setting that governs each kind of notification. Access emails can't be turned off. */
+export const emailPreferenceFor = {
+  SERVICE_UPDATE: "emailUpdates",
+  STATUS_CHANGE: "emailStatusChanges",
+  DOCUMENT_SHARED: "emailDocuments",
+  ACCESS: null,
+} as const satisfies Record<NotificationKind, "emailUpdates" | "emailStatusChanges" | "emailDocuments" | null>;
+
+/**
+ * Notifies the customers who can see a work order. Everyone with access gets it in their
+ * portal feed; it's also emailed unless they've turned off email for that kind. A given
+ * event reaches each person once, however many times it's raised.
+ */
 export async function logCustomerNotification(
   client: Prisma.TransactionClient | PrismaClient,
   input: {
     companyId: string;
     workOrderId: string;
     serviceUpdateId?: string;
+    kind?: NotificationKind;
     eventKey?: string;
     subject?: string;
     body?: string;
@@ -62,63 +85,86 @@ export async function logCustomerNotification(
       return 0;
     }
     input.eventKey ??= `service-update:${input.serviceUpdateId}`;
-    input.subject ??= `Service update: ${serviceUpdate.title}`;
-    input.body ??= `${serviceUpdate.body}\n\nView repair ${workOrder.workOrderNumber}: ${customerWorkOrderLink(input.workOrderId)}`;
+    input.subject ??= `Repair ${workOrder.workOrderNumber}: ${serviceUpdate.title}`;
+    input.body ??= serviceUpdate.body;
   }
   if (!input.eventKey || !input.subject || !input.body) throw new Error("Notification content is required.");
+  const kind = input.kind ?? (input.serviceUpdateId ? NotificationKind.SERVICE_UPDATE : NotificationKind.STATUS_CHANGE);
+  const preference = emailPreferenceFor[kind];
 
-  const recipientWhere: Prisma.UserAccessWhereInput = {
-    companyId: input.companyId,
-    role: "CUSTOMER_USER",
-    user: { isActive: true },
-    OR: [
-      { scope: AccessScope.COMPANY, locationId: null },
-      ...(workOrder.locationId ? [{ scope: AccessScope.LOCATION, locationId: workOrder.locationId }] : []),
-    ],
-  };
-  const recipients = await client.userAccess.findMany({
-    where: recipientWhere,
-    distinct: ["userId"],
-    select: { user: { select: { email: true } } },
-  });
-
-  const optedInRecipients = await client.user.findMany({
+  const recipients = await client.user.findMany({
     where: {
-      email: { in: recipients.map(({ user }) => user.email) },
       isActive: true,
-      OR: [
-        { notificationPreference: null },
-        { notificationPreference: { emailUpdates: true } },
-      ],
+      access: {
+        some: {
+          companyId: input.companyId,
+          role: "CUSTOMER_USER",
+          OR: [
+            { scope: AccessScope.COMPANY, locationId: null },
+            ...(workOrder.locationId ? [{ scope: AccessScope.LOCATION, locationId: workOrder.locationId }] : []),
+          ],
+        },
+      },
     },
-    select: { email: true },
+    select: { id: true, email: true, notificationPreference: true },
   });
-
-  if (!optedInRecipients.length) {
+  if (!recipients.length) {
     return 0;
   }
 
+  const emailStatus = emailConfiguration() ? NotificationStatus.PENDING : NotificationStatus.LOGGED;
   const result = await client.notification.createMany({
-    data: optedInRecipients.map((user) => ({
+    data: recipients.map((user) => ({
       workOrderId: input.workOrderId,
       serviceUpdateId: input.serviceUpdateId,
+      userId: user.id,
+      kind,
       recipientEmail: user.email,
+      linkPath: customerWorkOrderPath(input.workOrderId),
       eventKey: input.eventKey!,
       subject: input.subject!,
       body: input.body!,
-      status: emailConfiguration() ? NotificationStatus.PENDING : NotificationStatus.LOGGED,
+      status: preference && user.notificationPreference && !user.notificationPreference[preference] ? NotificationStatus.OPTED_OUT : emailStatus,
     })),
     skipDuplicates: true,
   });
   return result.count;
 }
 
-/** Email content for a change in the status customers see. Internal stages and conditions stay out of it. */
+/**
+ * Queues an email that isn't about a repair: an access request for the admins, a decision
+ * for the requester, or an invitation. It goes through the same outbox, so it's retried and
+ * never sent twice.
+ */
+export async function queueAccessEmail(
+  client: Prisma.TransactionClient | PrismaClient,
+  input: { recipientEmail: string; userId?: string | null; eventKey: string; subject: string; body: string; linkPath?: string },
+) {
+  const result = await client.notification.createMany({
+    data: [{
+      kind: NotificationKind.ACCESS,
+      recipientEmail: input.recipientEmail,
+      userId: input.userId ?? null,
+      eventKey: input.eventKey,
+      subject: input.subject,
+      body: input.body,
+      linkPath: input.linkPath ?? null,
+      // Marked read: these are emails, not items for the customer's feed.
+      readAt: new Date(),
+      status: emailConfiguration() ? NotificationStatus.PENDING : NotificationStatus.LOGGED,
+    }],
+    skipDuplicates: true,
+  });
+  return result.count;
+}
+
+/** Notification content for a change in the status customers see. Internal stages and conditions stay out of it. */
 export function statusChangeNotification(input: { workOrderId: string; workOrderNumber: string; status: CustomerFacingStatus }) {
   const label = customerStatusLabels[input.status];
   return {
+    kind: NotificationKind.STATUS_CHANGE,
     subject: `Repair ${input.workOrderNumber}: ${label}`,
-    body: `The status of your repair ${input.workOrderNumber} is now ${label}.\n\nView the repair: ${customerWorkOrderLink(input.workOrderId)}`,
+    body: `The status of your repair ${input.workOrderNumber} is now ${label}.`,
   };
 }
 
@@ -132,6 +178,21 @@ export async function claimNotification(notification: { id: string; nextAttemptA
     data: { nextAttemptAt: new Date(Date.now() + claimLeaseMilliseconds) },
   });
   return claimed.count === 1;
+}
+
+/** The HTML and plain-text bodies of a queued notification, with its link and the right footer. */
+export function emailContent(notification: { kind: NotificationKind; subject: string; body: string; linkPath: string | null; userId: string | null }) {
+  const origin = portalOrigin();
+  const canOptOut = Boolean(notification.userId && emailPreferenceFor[notification.kind]);
+  return renderNotificationEmail({
+    heading: notification.subject,
+    body: notification.body,
+    link: notification.linkPath ? { url: `${origin}${notification.linkPath}`, label: notification.kind === NotificationKind.ACCESS ? "Open the portal" : "View the repair" } : null,
+    logoUrl: `${origin}/pfeiffer-vacuum-logo.png`,
+    footer: canOptOut
+      ? { preferencesUrl: `${origin}/portal/notifications`, unsubscribeUrl: unsubscribeLink(notification.userId!, notification.kind) }
+      : null,
+  });
 }
 
 export async function dispatchPendingNotifications(limit = 25) {
@@ -155,7 +216,7 @@ export async function dispatchPendingNotifications(limit = 25) {
       const poller = await configuration.client.beginSend({
         senderAddress: configuration.senderAddress,
         recipients: { to: [{ address: notification.recipientEmail }] },
-        content: { subject: notification.subject, plainText: notification.body },
+        content: { subject: notification.subject, ...emailContent(notification) },
       });
       const result = await poller.pollUntilDone();
       await prisma.notification.update({

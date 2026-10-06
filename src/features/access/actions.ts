@@ -10,6 +10,8 @@ import { UserFacingError } from "@/lib/errors";
 import { allowRequest } from "@/lib/rate-limit";
 import { runAction } from "@/lib/run-action";
 import { recordAudit } from "@/services/audit";
+import { invitedIdentityPrefix } from "@/services/identity-linking";
+import { queueAccessEmail } from "@/services/notifications";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
 import { displayNameForPerson, normalizeNamePart } from "@/services/person-name";
 
@@ -59,12 +61,26 @@ export async function createAccessRequest(formData: FormData): Promise<ActionRes
     ]);
     if (pending > 0 || recent >= 3) return accessRequestReceived;
 
-    await prisma.accessRequest.create({
-      data: {
-        ...input,
-        name: displayNameForPerson(input.firstName, input.lastName, input.email),
-        message: input.message || null,
-      },
+    await prisma.$transaction(async (transaction) => {
+      const request = await transaction.accessRequest.create({
+        data: {
+          ...input,
+          name: displayNameForPerson(input.firstName, input.lastName, input.email),
+          message: input.message || null,
+        },
+      });
+      // Tell the people who can approve it. Each gets one email per request.
+      const reviewers = await transaction.user.findMany({ where: { isActive: true, internalRole: { in: [UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER] } }, select: { id: true, email: true } });
+      for (const reviewer of reviewers) {
+        await queueAccessEmail(transaction, {
+          recipientEmail: reviewer.email,
+          userId: reviewer.id,
+          eventKey: `access-request:${request.id}`,
+          subject: `Portal access requested by ${request.name}`,
+          body: `${request.name} (${request.email}) has asked for customer portal access for ${request.requestedCompany}.${request.message ? `\n\nTheir message: ${request.message}` : ""}\n\nReview the request to approve or decline it.`,
+          linkPath: "/workspace/access-requests",
+        });
+      }
     });
     revalidatePath("/access-request");
     revalidatePath("/workspace");
@@ -120,6 +136,14 @@ export async function approveAccessRequest(formData: FormData): Promise<ActionRe
         entityId: request.id,
         metadata: { companyId: company.id, userId: user.id },
       });
+      await queueAccessEmail(transaction, {
+        recipientEmail: request.email,
+        userId: user.id,
+        eventKey: `access-approved:${request.id}`,
+        subject: "Your VacTech service portal access is ready",
+        body: `Hello ${displayName},\n\nYour request for access to ${company.name}'s repairs has been approved.\n\nSign in with this email address (${request.email}). The first time, you'll confirm the address with a one-time code and choose a password.`,
+        linkPath: "/portal",
+      });
     });
     revalidatePath("/workspace");
     revalidatePath("/workspace/access-requests");
@@ -144,8 +168,68 @@ export async function rejectAccessRequest(formData: FormData): Promise<ActionRes
         entityType: "AccessRequest",
         entityId: request.id,
       });
+      await queueAccessEmail(transaction, {
+        recipientEmail: request.email,
+        eventKey: `access-declined:${request.id}`,
+        subject: "About your VacTech service portal request",
+        body: `Hello ${request.name},\n\nWe weren't able to approve your request for portal access for ${request.requestedCompany}. If you think this is a mistake, reply to your VacTech service contact and we'll look again.`,
+      });
     });
     revalidatePath("/workspace");
     revalidatePath("/workspace/access-requests");
+  });
+}
+
+/**
+ * Invites someone to the customer portal directly, without an access request. Their account
+ * and access are created now, and an email tells them how to sign in. The account is linked
+ * to their sign-in the first time they use that email address.
+ */
+export async function inviteCustomerUser(formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const input = z.object({
+      companyId: z.string().uuid(),
+      locationId: z.string().uuid().or(z.literal("")).transform((id) => id || null),
+      firstName: requiredText.max(100),
+      lastName: requiredText.max(100),
+      email: z.string().trim().max(254).email("Enter a valid email address."),
+    }).parse({
+      companyId: value(formData, "companyId"),
+      locationId: value(formData, "locationId"),
+      firstName: value(formData, "firstName"),
+      lastName: value(formData, "lastName"),
+      email: value(formData, "email").toLowerCase(),
+    });
+    const inviter = await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
+
+    await prisma.$transaction(async (transaction) => {
+      const company = await transaction.company.findFirst({ where: { id: input.companyId, archivedAt: null } });
+      if (!company) throw new UserFacingError("Customer not found.");
+      const location = input.locationId ? await transaction.location.findFirst({ where: { id: input.locationId, companyId: company.id } }) : null;
+      if (input.locationId && !location) throw new UserFacingError("That location belongs to a different customer.");
+
+      const existing = await transaction.user.findUnique({ where: { email: input.email } });
+      if (existing?.internalRole) throw new UserFacingError("That email address belongs to a staff member. Staff sign in to the workspace, not the customer portal.");
+      if (existing && !existing.isActive) throw new UserFacingError("That person's account is disabled. Enable it on the Users page first.");
+      const displayName = displayNameForPerson(input.firstName, input.lastName, input.email);
+      const user = existing ?? await transaction.user.create({
+        data: { identitySubject: `${invitedIdentityPrefix}${crypto.randomUUID()}`, email: input.email, displayName, firstName: input.firstName, lastName: input.lastName },
+      });
+      const scope = location ? "LOCATION" : "COMPANY";
+      const already = await transaction.userAccess.findFirst({ where: { userId: user.id, companyId: company.id, locationId: location?.id ?? null, role: "CUSTOMER_USER" }, select: { id: true } });
+      if (already) throw new UserFacingError(`${user.displayName} already has that access.`);
+      const access = await transaction.userAccess.create({ data: { userId: user.id, companyId: company.id, locationId: location?.id ?? null, role: "CUSTOMER_USER", scope } });
+      await recordAudit(transaction, { actorUserId: inviter.id, eventType: "user-access.invited", entityType: "UserAccess", entityId: access.id, metadata: { email: input.email, company: company.name, ...(location ? { location: location.name } : {}), newAccount: !existing } });
+      await queueAccessEmail(transaction, {
+        recipientEmail: input.email,
+        userId: user.id,
+        eventKey: `invitation:${access.id}`,
+        subject: `You've been given access to ${company.name}'s repairs`,
+        body: `Hello ${user.displayName},\n\n${inviter.displayName} at VacTech has given you access to the service portal for ${company.name}${location ? ` (${location.name})` : ""}. You can follow each repair, see photos, and download reports and other documents.\n\nSign in with this email address (${input.email}). The first time, you'll confirm the address with a one-time code and choose a password.`,
+        linkPath: "/portal",
+      });
+    });
+    revalidatePath("/workspace", "layout");
+    return `Invitation sent to ${input.email}.`;
   });
 }

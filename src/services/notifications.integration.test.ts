@@ -2,7 +2,7 @@ import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaClient, UserRole } from "@prisma/client";
 import { updateWorkOrderStatus } from "@/features/work-orders/actions";
-import { claimNotification, expiredNotificationError, expireStaleNotifications, statusChangeNotification } from "@/services/notifications";
+import { claimNotification, customerWorkOrderPath, emailContent, expiredNotificationError, expireStaleNotifications, statusChangeNotification } from "@/services/notifications";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -69,8 +69,12 @@ describe("customer status notifications", () => {
     process.env.APP_ORIGIN = "https://portal.example.test";
     const notification = statusChangeNotification({ workOrderId: "wo-1", workOrderNumber: "48366 AZ", status: "IN_PROGRESS" });
     expect(notification.subject).toBe("Repair 48366 AZ: In progress");
-    expect(notification.body).toContain("https://portal.example.test/portal/work-orders/wo-1");
     expect(notification.body).not.toMatch(/NORMAL|IN_PROGRESS/);
+    // The link is added when the email is built, with the way to stop these emails.
+    const email = emailContent({ ...notification, linkPath: customerWorkOrderPath("wo-1"), userId: "0d0c5a52-6f0e-4f43-9d3e-0c8f1f3f5a11" });
+    expect(email.plainText).toContain("View the repair: https://portal.example.test/portal/work-orders/wo-1");
+    expect(email.html).toContain('href="https://portal.example.test/portal/work-orders/wo-1"');
+    expect(email.plainText).toContain("https://portal.example.test/unsubscribe?token=");
   });
 
   it("notifies customers only when the status they see changes", async () => {

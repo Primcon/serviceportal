@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CustomerFacingStatus, PrismaClient, RecordVisibility, UserRole, WorkOrderCondition } from "@prisma/client";
-import { getCustomerEquipment, getCustomerWorkOrder, listCustomerCompanies, listCustomerEquipment, listCustomerWorkOrders } from "./customer-queries";
+import { getCustomerEquipment, getCustomerWorkOrder, getWorkOrderAsCustomerSeesIt, listCustomerCompanies, listCustomerEquipment, listCustomerWorkOrders } from "./customer-queries";
 import { logCustomerNotification } from "@/services/notifications";
 
 const prisma = new PrismaClient();
@@ -133,6 +133,15 @@ describe("customer query authorization", () => {
     const workOrder = await getCustomerWorkOrder(customerIdentitySubject, workOrderId);
     expect(workOrder?.serviceStage).toMatchObject({ customerLabel: "Received" });
     expect(workOrder?.statusHistory.every((entry) => !("note" in entry) && !("condition" in entry))).toBe(true);
+  });
+
+  it("shows staff previewing a repair only what its customer would see", async () => {
+    const preview = await getWorkOrderAsCustomerSeesIt(workOrderId);
+    const asCustomer = await getCustomerWorkOrder(customerIdentitySubject, workOrderId);
+    expect(preview).toEqual(asCustomer);
+    expect(preview?.updates.map((update) => update.title)).toEqual(["Visible update"]);
+    expect(preview?.findings).toEqual([]);
+    expect(JSON.stringify(preview)).not.toContain("Internal");
   });
 
   it("rejects equipment and work orders at other locations in the same company", async () => {

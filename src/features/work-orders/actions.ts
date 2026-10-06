@@ -9,6 +9,7 @@ import { UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
 import { findOrCreateProductModel, modelDisplayName } from "@/features/work-orders/intake";
 import { setWorkOrderAssignee } from "@/features/assignments/assign";
+import { notifyDocumentShared } from "@/features/work-orders/document-notification";
 import { unsignedStepsBefore } from "@/features/checklists/checklist";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
@@ -349,6 +350,7 @@ export async function createInternalDocument(formData: FormData): Promise<Action
           entityId: attachment.id,
           customerVisible: input.visibility === "CUSTOMER_VISIBLE",
         });
+        if (input.visibility === "CUSTOMER_VISIBLE") await notifyDocumentShared(transaction, { id: attachment.id, workOrderId: input.workOrderId, documentType: input.documentType, fileName });
       });
     } catch (error) {
       await discardStoredFiles([originalKey]);

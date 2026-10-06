@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListKind, UserRole, WorkOrderCondition } from "@prisma/client";
-import { AlertTriangle, ArrowLeft, BookOpen, Camera, Hand, ListChecks, PackageSearch, Printer, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpen, Camera, Eye, Hand, ListChecks, PackageSearch, Printer, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { Badge } from "@/components/ui/badge";
@@ -135,6 +135,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
             </div>
             <div className="flex flex-wrap gap-2">
               <Link className={buttonStyles({ variant: "outline", size: "sm" })} href={`/workspace/work-orders/${workOrder.id}/traveler`}><Printer size={15} /> Traveler</Link>
+              <Link className={buttonStyles({ variant: "outline", size: "sm" })} href={`/workspace/work-orders/${workOrder.id}/customer-view`}><Eye size={15} /> Customer view</Link>
             <DetailsEditor
               details={{
                 id: workOrder.id,
