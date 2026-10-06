@@ -1,11 +1,12 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Archive, ArchiveRestore, Combine, MapPin, Pencil, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, Combine, MapPin, Pencil, Plus, UserPlus } from "lucide-react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { Field } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
+import { inviteCustomerUser } from "@/features/access/actions";
 import { mergeCompanies, setCompanyArchived, setLocationArchived, updateCompany, updateLocation } from "@/features/records/actions";
 import { createLocation } from "@/features/work-orders/actions";
 
@@ -129,5 +130,33 @@ export function LocationTools({ location }: { location: Location }) {
         </Modal>
       )}
     </div>
+  );
+}
+
+/** The "Invite someone" button and dialog: gives a person access to this customer's repairs and emails them how to sign in. */
+export function InviteCustomerButton({ companyId, companyName, locations }: { companyId: string; companyName: string; locations: { id: string; name: string }[] }) {
+  const id = useId();
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <>
+      <button className={buttonStyles({ variant: "outline", size: "sm" })} onClick={() => setIsOpen(true)} type="button"><UserPlus size={15} /> Invite someone</button>
+      {isOpen && (
+        <Modal description={`They'll get an email with a link to the portal. They sign in with their email address and choose a password the first time; there's no request to approve.`} eyebrow="CUSTOMER ACCESS" onClose={() => setIsOpen(false)} title={`Invite someone from ${companyName}`}>
+          <ActionFeedbackForm action={inviteCustomerUser} className="grid gap-4 sm:grid-cols-2" feedbackClassName="sm:col-span-2" resetOnSuccess>
+            <input name="companyId" type="hidden" value={companyId} />
+            <Field htmlFor={`${id}-first`} label="First name"><input autoComplete="off" className={fieldStyles} id={`${id}-first`} maxLength={100} name="firstName" required /></Field>
+            <Field htmlFor={`${id}-last`} label="Last name"><input autoComplete="off" className={fieldStyles} id={`${id}-last`} maxLength={100} name="lastName" required /></Field>
+            <Field className="sm:col-span-2" htmlFor={`${id}-email`} label="Work email"><input autoComplete="off" className={fieldStyles} id={`${id}-email`} maxLength={254} name="email" required type="email" /></Field>
+            <Field className="sm:col-span-2" hint="Someone limited to one location sees only that location's pumps and repairs." htmlFor={`${id}-location`} label="Can see">
+              <select className={fieldStyles} defaultValue="" id={`${id}-location`} name="locationId">
+                <option value="">All of {companyName}&apos;s locations</option>
+                {locations.map((location) => <option key={location.id} value={location.id}>Only {location.name}</option>)}
+              </select>
+            </Field>
+            <div className="flex justify-end sm:col-span-2"><button className={buttonStyles()}><UserPlus size={16} /> Send invitation</button></div>
+          </ActionFeedbackForm>
+        </Modal>
+      )}
+    </>
   );
 }

@@ -35,3 +35,27 @@ x-notification-worker-secret: <NOTIFICATION_WORKER_SECRET>
 The endpoint returns `404` when the secret is missing or invalid. Grant the job's system-assigned managed identity permission to read the `notification-worker-secret` Key Vault secret. The job must use a secret reference rather than embedding the value in its definition.
 
 The dispatcher is idempotent per customer recipient and notification event. Monitor `FAILED` notifications and repeated pending backlog as operational alerts.
+
+## The Customer's Feed and Email Choices
+
+Every notification about a repair is stored once per customer who can see that repair (`Notification.userId`), whether or not it's emailed. Those rows are the customer's feed at `/portal/notifications`, with an unread count in the navigation (`readAt` empty means unread). Opening an item marks it read; that happens through a form post, because page loads never change anything.
+
+There are three kinds customers receive, each with its own email setting in `NotificationPreference`:
+
+| Kind | Raised when | Email setting |
+| --- | --- | --- |
+| `SERVICE_UPDATE` | Staff post a customer update and tick "notify" | `emailUpdates` |
+| `STATUS_CHANGE` | The status customers see changes | `emailStatusChanges` |
+| `DOCUMENT_SHARED` | A document is uploaded as, or switched to, customer-visible (once per document) | `emailDocuments` |
+
+A customer who has turned a kind off still gets the feed item; its row is stored with status `OPTED_OUT` and the dispatcher never sends it. A daily digest isn't built.
+
+## Access Emails
+
+`ACCESS` notifications aren't about a repair (`workOrderId` is empty) and can't be turned off: a new access request goes to every active manager and administrator, the requester is told when it's approved or declined, and an invited customer gets sign-in instructions. They use the same outbox, so they're retried and never sent twice.
+
+## Email Format
+
+Emails are sent as HTML with a plain-text version (`src/services/email-template.ts`): the logo, the subject as a heading, the message, and one button built from `linkPath` and `APP_ORIGIN`. The logo is loaded from `APP_ORIGIN/pfeiffer-vacuum-logo.png`, so that address must be reachable from the internet. Message text is escaped.
+
+Emails a customer can turn off end with two links: their settings page, and `/unsubscribe?token=...`, which stops that one kind without signing in. The token is the user and kind, signed with `AUTH_SESSION_SECRET` (`src/services/unsubscribe.ts`). The page asks before changing anything, so a mail scanner that follows links can't unsubscribe someone.

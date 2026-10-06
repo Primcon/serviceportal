@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
-import { grantUserAccess, revokeUserAccess, updateInternalUserRole, updateUserActiveStatus } from "@/features/admin/actions";
+import { grantUserAccess, revokeUserAccess, updateInternalUserRole, updateUserActiveStatus, resetSignInLink } from "@/features/admin/actions";
 import { roleLabels } from "@/lib/labels";
 
 type User = { id: string; displayName: string; email: string; isActive: boolean; internalRole: UserRole | null; access: { id: string; role: string; scope: string; company: { name: string }; location: { name: string } | null }[] };
@@ -52,6 +52,12 @@ export default function UserDirectory({ users, companies }: { users: User[]; com
                   {selectedUser.isActive ? <Ban size={16} /> : <CheckCircle2 size={16} />}
                   {selectedUser.isActive ? "Disable access" : "Enable access"}
                 </button>
+              </ActionFeedbackForm>
+              <ActionFeedbackForm action={resetSignInLink} className="mt-6 grid gap-2 border-t border-line pt-5">
+                <input name="userId" type="hidden" value={selectedUser.id} />
+                <p className="text-sm font-bold">Trouble signing in?</p>
+                <p className="text-sm text-muted">If this person&apos;s sign-in was recreated and the portal no longer recognizes them, reset the link. Their next sign-in with this email address is matched to this account, with its access and history intact.</p>
+                <button className={buttonStyles({ variant: "outline", size: "sm", className: "w-fit" })}>Reset sign-in link</button>
               </ActionFeedbackForm>
               {selectedUser.internalRole && (
                 <ActionFeedbackForm action={updateInternalUserRole} className="mt-6 grid gap-3 border-t border-line pt-5" successMessage="Internal role updated.">

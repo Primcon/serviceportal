@@ -8,10 +8,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { panelStyles } from "@/components/ui/styles";
 import { productModelOptions } from "@/features/catalog/queries";
 import { managerRoles } from "@/features/navigation/workspace-items";
-import { AddLocationButton, CustomerTools, LocationTools } from "@/features/records/components/customer-tools";
+import { AddLocationButton, CustomerTools, InviteCustomerButton, LocationTools } from "@/features/records/components/customer-tools";
 import { openWorkOrderWhere } from "@/features/records/merge";
 import { customerStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
+import { isPlaceholderIdentity } from "@/services/identity-linking";
 import { requireWorkspaceUser } from "@/services/page-access";
 import { shopTimeZone } from "@/lib/dates";
 
@@ -41,7 +42,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ compa
       userAccess: {
         where: { role: UserRole.CUSTOMER_USER },
         orderBy: { user: { displayName: "asc" } },
-        select: { id: true, scope: true, location: { select: { name: true } }, user: { select: { displayName: true, email: true, isActive: true } } },
+        select: { id: true, scope: true, location: { select: { name: true } }, user: { select: { displayName: true, email: true, isActive: true, identitySubject: true } } },
       },
       workOrders: {
         orderBy: { updatedAt: "desc" },
@@ -150,7 +151,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ compa
         <section className={`${panelStyles} lg:col-span-2`} id="access">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="flex items-center gap-2 text-lg font-bold"><UsersRound className="text-brand" size={18} /> Who can sign in for this customer</h2>
-            <Link className="text-sm font-bold text-brand" href="/workspace/users">Manage in Users</Link>
+            <div className="flex flex-wrap items-center gap-3">
+              {!company.archivedAt && <InviteCustomerButton companyId={company.id} companyName={company.name} locations={activeLocations.map((location) => ({ id: location.id, name: location.name }))} />}
+              <Link className="text-sm font-bold text-brand" href="/workspace/users">Manage in Users</Link>
+            </div>
           </div>
           {company.userAccess.length ? (
             <ul className="mt-4 grid gap-x-8 divide-y divide-line border-y border-line sm:grid-cols-2 sm:divide-y-0">
@@ -159,12 +163,13 @@ export default async function CustomerPage({ params }: { params: Promise<{ compa
                   <span className="min-w-0"><span className="block font-bold">{grant.user.displayName}</span><span className="block truncate text-sm text-muted">{grant.user.email}</span></span>
                   <span className="flex items-center gap-2">
                     <Badge tone="outline">{grant.scope === "COMPANY" ? "All locations" : grant.location?.name ?? "One location"}</Badge>
+                    {isPlaceholderIdentity(grant.user.identitySubject) && grant.user.isActive && <Badge tone="neutral">Hasn&apos;t signed in yet</Badge>}
                     {!grant.user.isActive && <Badge tone="neutral">Disabled</Badge>}
                   </span>
                 </li>
               ))}
             </ul>
-          ) : <p className="mt-3 text-sm text-muted">Nobody yet. Approve an access request or grant access from Users.</p>}
+          ) : <p className="mt-3 text-sm text-muted">Nobody yet. Invite someone, or approve an access request.</p>}
         </section>
 
         {company.mergedFrom.length > 0 && (

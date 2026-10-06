@@ -17,7 +17,10 @@ function isCurrentPath(pathname: string, href: string) {
   return href === "/portal" ? pathname === href || pathname.startsWith("/portal/work-orders") : pathname.startsWith(href);
 }
 
-export default function PortalNavigation() {
+export default function PortalNavigation({ unreadNotifications = 0 }: { unreadNotifications?: number }) {
+  const badge = (href: string) => href === "/portal/notifications" && unreadNotifications > 0
+    ? <span className="min-w-5 bg-brand px-1.5 text-center text-xs font-bold text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}<span className="sr-only"> unread</span></span>
+    : null;
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -34,7 +37,7 @@ export default function PortalNavigation() {
             const current = isCurrentPath(pathname, href);
             return (
               <Link aria-current={current ? "page" : undefined} className={`flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-bold ${current ? "border-brand text-ink" : "border-transparent text-muted hover:text-brand"}`} href={href} key={href}>
-                <Icon size={16} /> {label}
+                <Icon size={16} /> {label} {badge(href)}
               </Link>
             );
           })}
@@ -53,7 +56,7 @@ export default function PortalNavigation() {
             const current = isCurrentPath(pathname, href);
             return (
               <Link aria-current={current ? "page" : undefined} className={`flex items-center gap-2 border-l-2 px-3 py-2.5 text-sm font-bold ${current ? "border-danger bg-surface text-ink" : "border-transparent text-muted hover:bg-surface hover:text-brand"}`} href={href} key={href} onClick={() => setIsMenuOpen(false)}>
-                <Icon size={16} /> {label}
+                <Icon size={16} /> {label} {badge(href)}
               </Link>
             );
           })}

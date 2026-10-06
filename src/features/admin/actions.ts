@@ -7,7 +7,9 @@ import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/lib/action-result";
 import { AccessDeniedError, UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
+import { notifyDocumentShared } from "@/features/work-orders/document-notification";
 import { recordAudit } from "@/services/audit";
+import { isPlaceholderIdentity, relinkIdentityPrefix } from "@/services/identity-linking";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
 import { deletePrivateFile } from "@/services/private-storage";
 
@@ -102,6 +104,29 @@ export async function updateInternalUserRole(formData: FormData): Promise<Action
   });
 }
 
+/**
+ * Lets a person link their account again at their next sign-in. For someone whose sign-in
+ * was recreated (so it no longer matches the one on record): their account, access and
+ * history stay, and the next sign-in with their email address is accepted.
+ */
+export async function resetSignInLink(formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const userId = requiredText.parse(value(formData, "userId"));
+    const reviewer = await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
+    await prisma.$transaction(async (transaction) => {
+      const user = await transaction.user.findUnique({ where: { id: userId }, select: { id: true, internalRole: true, identitySubject: true } });
+      if (!user) throw new UserFacingError("User not found.");
+      assertMayManage(reviewer.internalRole, user.internalRole);
+      if (user.id === reviewer.id) throw new UserFacingError("You can't reset your own sign-in link.");
+      if (isPlaceholderIdentity(user.identitySubject)) throw new UserFacingError("This account is already waiting for its next sign-in.");
+      await transaction.user.update({ where: { id: user.id }, data: { identitySubject: `${relinkIdentityPrefix}${crypto.randomUUID()}` } });
+      await recordAudit(transaction, { actorUserId: reviewer.id, eventType: "user.sign-in-link-reset", entityType: "User", entityId: user.id });
+    });
+    revalidatePath("/workspace/users");
+    return "Done. Their next sign-in with this email address will be linked to this account.";
+  });
+}
+
 export async function grantUserAccess(formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
     const input = z.object({ userId: requiredText, companyId: requiredText, locationId: z.string().trim() }).parse({
@@ -166,11 +191,12 @@ export async function updateDocumentVisibility(formData: FormData): Promise<Acti
     const workOrderId = await prisma.$transaction(async (transaction) => {
       const attachment = await transaction.attachment.findFirst({
         where: { id: input.attachmentId, kind: "DOCUMENT" },
-        select: { id: true, workOrderId: true, visibility: true },
+        select: { id: true, workOrderId: true, visibility: true, documentType: true, fileName: true },
       });
       if (!attachment) throw new UserFacingError("Document not found.");
       if (attachment.visibility === input.visibility) return attachment.workOrderId;
       await transaction.attachment.update({ where: { id: attachment.id }, data: { visibility: input.visibility } });
+      if (input.visibility === "CUSTOMER_VISIBLE") await notifyDocumentShared(transaction, attachment);
       await recordAudit(transaction, { actorUserId: reviewer.id, workOrderId: attachment.workOrderId, eventType: "document.visibility-changed", entityType: "Attachment", entityId: attachment.id, customerVisible: input.visibility === "CUSTOMER_VISIBLE", metadata: { previousVisibility: attachment.visibility, visibility: input.visibility } });
       return attachment.workOrderId;
     });

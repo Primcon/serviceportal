@@ -1,3 +1,4 @@
+import { decideEmailLink, linkRefusalMessages } from "@/services/identity-linking";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { jwtVerify, SignJWT, createRemoteJWKSet } from "jose";
@@ -100,6 +101,14 @@ async function synchronizeCustomerDirectoryProfile(accessToken: string | undefin
   }
 }
 
+/** A sign-in matched an existing account by email address but isn't allowed to take it over. */
+export class IdentityLinkRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "IdentityLinkRefusedError";
+  }
+}
+
 export async function upsertEntraUser(input: {
   identitySubject: string;
   email: string;
@@ -107,7 +116,10 @@ export async function upsertEntraUser(input: {
   firstName?: string | null;
   lastName?: string | null;
   internalRole?: UserRole;
+  /** Which sign-in this is. Customer and staff sign-ins never claim each other's accounts. */
+  audience?: EntraAudience;
 }) {
+  const audience = input.audience ?? (input.internalRole ? "employee" : "customer");
   const hasCanonicalName = input.firstName !== undefined || input.lastName !== undefined;
   const firstName = normalizeNamePart(input.firstName);
   const lastName = normalizeNamePart(input.lastName);
@@ -120,8 +132,12 @@ export async function upsertEntraUser(input: {
     return prisma.user.update({ where: { id: identityMatch.id }, data: { email: input.email, displayName, ...nameUpdate, ...(input.internalRole && !identityMatch.internalRole ? { internalRole: input.internalRole } : {}) } });
   }
 
-  const emailMatch = await prisma.user.findUnique({ where: { email: input.email } });
+  // An account set up in advance (approved, invited or imported) is waiting for its owner's
+  // first sign-in. Only such an account can be claimed by email address.
+  const emailMatch = await prisma.user.findFirst({ where: { email: { equals: input.email, mode: "insensitive" } }, include: { _count: { select: { access: true } } } });
   if (emailMatch) {
+    const decision = decideEmailLink({ identitySubject: emailMatch.identitySubject, internalRole: emailMatch.internalRole, hasCustomerAccess: emailMatch._count.access > 0 }, audience);
+    if (decision !== "link") throw new IdentityLinkRefusedError(linkRefusalMessages[decision]);
     return prisma.user.update({ where: { id: emailMatch.id }, data: { identitySubject: input.identitySubject, displayName, ...nameUpdate, ...(input.internalRole && !emailMatch.internalRole ? { internalRole: input.internalRole } : {}) } });
   }
 
@@ -201,6 +217,7 @@ export async function exchangeEntraCode(audience: EntraAudience, code: string, s
   const user = await upsertEntraUser({
     identitySubject: externalSubject,
     email,
+    audience,
     ...(audience === "customer"
       ? {
           firstName,

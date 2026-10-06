@@ -68,6 +68,8 @@ const titles: Record<string, string> = {
   "user.disabled": "User disabled",
   "user.internal-role-changed": "Staff role changed",
   "user-access.granted": "Customer access granted",
+  "user-access.invited": "Customer invited to the portal",
+  "user.sign-in-link-reset": "Sign-in link reset",
   "user-access.revoked": "Customer access removed",
   "access-request.approved": "Access request approved",
   "access-request.rejected": "Access request rejected",

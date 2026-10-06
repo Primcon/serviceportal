@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { CustomerAccessNotApprovedError, exchangeEntraCode } from "@/services/entra-auth";
+import { CustomerAccessNotApprovedError, exchangeEntraCode, IdentityLinkRefusedError } from "@/services/entra-auth";
 import type { EntraAudience } from "@/services/entra-config";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +30,8 @@ export async function GET(
     if (audience === "customer" && error instanceof CustomerAccessNotApprovedError) {
       return NextResponse.redirect(new URL("/access-pending", applicationOrigin));
     }
+    // Safe to show: it tells the person which sign-in to use, or to ask for a reset.
+    if (error instanceof IdentityLinkRefusedError) return NextResponse.json({ error: error.message }, { status: 403 });
     return NextResponse.json({ error: "Authentication could not be completed" }, { status: 401 });
   }
 }

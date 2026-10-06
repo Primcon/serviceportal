@@ -19,7 +19,8 @@ The portal has four staff roles and one customer role. Each staff role includes 
 | Customers and locations: add, rename, archive, merge | Yes | Yes | No | No |
 | Archive or merge pumps | Yes | Yes | No | No |
 | Model catalog: add, correct, retire, merge; upload manuals | Yes | Yes | No | No |
-| Users, access requests and customer access | Yes | Yes | No | No |
+| Users, access requests and customer access; inviting customers; resetting a sign-in link | Yes | Yes | No | No |
+| Preview a repair as its customer sees it | Yes | Yes | Yes | Yes |
 | Workflow stages, settings, reports, audit log, operations dashboard | Yes | Yes | No | No |
 | Change or disable an administrator | Yes | No | No | No |
 
@@ -36,6 +37,18 @@ In the code the roles are `PORTAL_ADMINISTRATOR`, `VACTECH_MANAGER`, `VACTECH_QA
 - Internal-only data is never serialized in a customer response, even when an identifier is guessed.
 - Pending access requests do not grant access. An administrator must assign company, role, and activation deliberately.
 - Inputs are validated server-side with Zod. Important administrative, work-order, update, and attachment activity is audited.
+
+## Signing In and Account Linking
+
+An account can exist before its owner has ever signed in: approved from an access request, invited by a manager, or imported. Until then it holds a placeholder identity (`customer:`, `invited:`, `wordpress:` or `relink:`). The first sign-in with the matching verified email address replaces the placeholder (`src/services/identity-linking.ts`). Three rules protect this:
+
+- An account that already has a real sign-in is never taken over by a different one. The sign-in is refused with a message to ask for a reset.
+- Customer sign-in never claims a staff account, and staff sign-in never claims an account holding customer access.
+- A manager can **reset the sign-in link** on the Users page for someone whose sign-in was recreated. Their account, access and history stay, and their next sign-in with that email address is accepted.
+
+Managers can also **invite** a customer from the customer's page: the account and access are created at once and the person is emailed how to sign in.
+
+Staff can open **Customer view** on any work order to see the repair exactly as its customer does. It's built from the customer's own selection of data, so nothing unshared appears.
 
 ## Employee Roles
 

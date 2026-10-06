@@ -97,6 +97,73 @@ export async function countCustomerWorkOrdersByStatus(identitySubject: string) {
   return counts;
 }
 
+/**
+ * Everything a customer is shown about a repair. Only customer-visible updates, findings
+ * and files are selected, and nothing internal (notes, handoffs, the history of conditions).
+ */
+const customerWorkOrderSelect = {
+  id: true,
+  workOrderNumber: true,
+  summary: true,
+  customerFacingStatus: true,
+  updatedAt: true,
+  receivedAt: true,
+  company: { select: { name: true } },
+  equipment: { select: { id: true, productModel: true, serialNumber: true } },
+  condition: true,
+  promisedAt: true,
+  completedAt: true,
+  customerPurchaseOrder: true,
+  rmaReference: true,
+  serviceCenter: { select: { name: true, contactEmail: true, contactPhone: true } },
+  serviceStage: { select: { displayName: true, customerLabel: true, sequence: true } },
+  // Used only to date the steps of the progress tracker; internal notes aren't selected.
+  statusHistory: {
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      createdAt: true,
+      serviceStage: { select: { displayName: true, customerLabel: true, sequence: true } },
+    },
+  },
+  updates: {
+    where: { visibility: RecordVisibility.CUSTOMER_VISIBLE },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, title: true, body: true, createdAt: true },
+  },
+  findings: {
+    where: { visibility: RecordVisibility.CUSTOMER_VISIBLE },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, title: true, body: true, createdAt: true },
+  },
+  auditEvents: {
+    where: { customerVisible: true },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+    select: { id: true, eventType: true, createdAt: true },
+  },
+  attachments: {
+    where: {
+      visibility: RecordVisibility.CUSTOMER_VISIBLE,
+      kind: { in: ["PHOTO", "DOCUMENT"] },
+    },
+    orderBy: { uploadedAt: "desc" },
+    select: {
+      id: true,
+      kind: true,
+      fileName: true,
+      caption: true,
+      photoCategory: true,
+      documentType: true,
+      mimeType: true,
+      sizeBytes: true,
+      uploadedAt: true,
+    },
+  },
+} satisfies Prisma.WorkOrderSelect;
+
+export type CustomerWorkOrder = Prisma.WorkOrderGetPayload<{ select: typeof customerWorkOrderSelect }>;
+
 export async function getCustomerWorkOrder(
   identitySubject: string,
   workOrderId: string,
@@ -115,66 +182,7 @@ export async function getCustomerWorkOrder(
       id: workOrderId,
       ...customerWorkOrderAccessWhere(user.id),
     },
-    select: {
-      id: true,
-      workOrderNumber: true,
-      summary: true,
-      customerFacingStatus: true,
-      updatedAt: true,
-      receivedAt: true,
-      company: { select: { name: true } },
-      equipment: { select: { id: true, productModel: true, serialNumber: true } },
-      condition: true,
-      promisedAt: true,
-      completedAt: true,
-      customerPurchaseOrder: true,
-      rmaReference: true,
-      serviceCenter: { select: { name: true, contactEmail: true, contactPhone: true } },
-      serviceStage: { select: { displayName: true, customerLabel: true, sequence: true } },
-      // Used only to date the steps of the progress tracker; internal notes aren't selected.
-      statusHistory: {
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          createdAt: true,
-          serviceStage: { select: { displayName: true, customerLabel: true, sequence: true } },
-        },
-      },
-      updates: {
-        where: { visibility: RecordVisibility.CUSTOMER_VISIBLE },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, title: true, body: true, createdAt: true },
-      },
-      findings: {
-        where: { visibility: RecordVisibility.CUSTOMER_VISIBLE },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, title: true, body: true, createdAt: true },
-      },
-      auditEvents: {
-        where: { customerVisible: true },
-        orderBy: { createdAt: "desc" },
-        take: 30,
-        select: { id: true, eventType: true, createdAt: true },
-      },
-      attachments: {
-        where: {
-          visibility: RecordVisibility.CUSTOMER_VISIBLE,
-          kind: { in: ["PHOTO", "DOCUMENT"] },
-        },
-        orderBy: { uploadedAt: "desc" },
-        select: {
-          id: true,
-          kind: true,
-          fileName: true,
-          caption: true,
-          photoCategory: true,
-          documentType: true,
-          mimeType: true,
-          sizeBytes: true,
-          uploadedAt: true,
-        },
-      },
-    },
+    select: customerWorkOrderSelect,
   });
 }
 
@@ -266,41 +274,42 @@ export async function listCustomerEquipment(identitySubject: string, search = ""
   return { equipment, total, page: currentPage, pageSize };
 }
 
-export async function getCustomerNotificationHistory(identitySubject: string) {
-  const user = await prisma.user.findUnique({
-    where: { identitySubject },
-    select: { id: true, email: true, isActive: true },
-  });
-  if (!user?.isActive) return [];
-
-  return prisma.notification.findMany({
-    where: {
-      recipientEmail: user.email,
-      workOrder: {
-        ...customerWorkOrderAccessWhere(user.id),
-      },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-    select: {
-      id: true,
-      status: true,
-      createdAt: true,
-      workOrder: { select: { id: true, workOrderNumber: true, summary: true } },
-      serviceUpdate: { select: { title: true, body: true } },
-    },
-  });
+/** The notifications a customer sees in their feed: about repairs they can still see, newest first. */
+function customerFeedWhere(userId: string): Prisma.NotificationWhereInput {
+  return { userId, kind: { not: "ACCESS" }, workOrder: customerWorkOrderAccessWhere(userId) };
 }
 
-export async function getCustomerNotificationPreference(identitySubject: string) {
-  const user = await prisma.user.findUnique({
-    where: { identitySubject },
-    select: { id: true, isActive: true },
-  });
-  if (!user?.isActive) return null;
+export async function listCustomerNotifications(identitySubject: string, { page = 1, pageSize = 25 } = {}) {
+  const currentPage = Math.max(1, Math.floor(page));
+  const userId = await activeCustomerId(identitySubject);
+  if (!userId) return { notifications: [], total: 0, unread: 0, page: currentPage, pageSize };
+  const where = customerFeedWhere(userId);
+  const [total, unread, notifications] = await Promise.all([
+    prisma.notification.count({ where }),
+    prisma.notification.count({ where: { ...where, readAt: null } }),
+    prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (currentPage - 1) * pageSize,
+      take: pageSize,
+      select: { id: true, kind: true, subject: true, body: true, readAt: true, createdAt: true, workOrder: { select: { id: true, workOrderNumber: true, summary: true } } },
+    }),
+  ]);
+  return { notifications, total, unread, page: currentPage, pageSize };
+}
 
-  const preference = await prisma.notificationPreference.findUnique({ where: { userId: user.id } });
-  return preference?.emailUpdates ?? true;
+/** How many notifications the customer hasn't opened, for the badge in the navigation. */
+export async function countUnreadNotifications(identitySubject: string) {
+  const userId = await activeCustomerId(identitySubject);
+  return userId ? prisma.notification.count({ where: { ...customerFeedWhere(userId), readAt: null } }) : 0;
+}
+
+/** Which kinds of notification the customer is emailed about. Everything is on until they turn it off. */
+export async function getCustomerNotificationPreferences(identitySubject: string) {
+  const userId = await activeCustomerId(identitySubject);
+  if (!userId) return null;
+  const preference = await prisma.notificationPreference.findUnique({ where: { userId } });
+  return { emailUpdates: preference?.emailUpdates ?? true, emailStatusChanges: preference?.emailStatusChanges ?? true, emailDocuments: preference?.emailDocuments ?? true };
 }
 
 export async function getCustomerAccount(identitySubject: string) {
@@ -338,4 +347,13 @@ export async function listCustomerCompanies(identitySubject: string) {
 /** The workflow's stages as customers are shown them, for the progress tracker. */
 export function customerProgressStages() {
   return prisma.serviceStage.findMany({ orderBy: { sequence: "asc" }, select: { sequence: true, displayName: true, customerLabel: true, isActive: true } });
+}
+
+/**
+ * The same view of a repair a customer gets, for staff to preview. It uses the customer
+ * selection, so what staff see here is exactly what the customer would. The caller checks
+ * that the viewer is staff.
+ */
+export function getWorkOrderAsCustomerSeesIt(workOrderId: string) {
+  return prisma.workOrder.findUnique({ where: { id: workOrderId }, select: customerWorkOrderSelect });
 }
