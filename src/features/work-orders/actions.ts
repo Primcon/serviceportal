@@ -9,6 +9,7 @@ import { UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
 import { findOrCreateProductModel, modelDisplayName } from "@/features/work-orders/intake";
 import { setWorkOrderAssignee } from "@/features/assignments/assign";
+import { unsignedStepsBefore } from "@/features/checklists/checklist";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
 import { detectDocumentType, supportedDocumentDescription } from "@/services/file-types";
@@ -183,6 +184,8 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
         note: z.string().trim().max(1000).transform((note) => note || null),
         // Who has it next: "keep" leaves the owner as is, "" returns it to the queue, otherwise a staff member.
         handoff: z.string().uuid().or(z.literal("")).or(z.literal("keep")),
+        // A manager's reason for moving the job on with required checklist steps unsigned.
+        overrideReason: z.string().trim().max(500).transform((reason) => reason || null),
       })
       .parse({
         workOrderId: value(formData, "workOrderId"),
@@ -190,6 +193,7 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
         condition: value(formData, "condition"),
         note: value(formData, "note"),
         handoff: formData.has("handoff") ? value(formData, "handoff") : "keep",
+        overrideReason: value(formData, "overrideReason"),
       });
     const internalUser = await getActiveInternalUser();
     await getAuthorizedWorkOrder(input.workOrderId);
@@ -204,8 +208,21 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
     const changed = await prisma.$transaction(async (transaction) => {
       const workOrder = await transaction.workOrder.findUniqueOrThrow({
         where: { id: input.workOrderId },
-        select: { companyId: true, workOrderNumber: true, serviceStageId: true, condition: true, customerFacingStatus: true, completedAt: true, assignedToId: true },
+        select: { id: true, companyId: true, workOrderNumber: true, serviceStageId: true, condition: true, customerFacingStatus: true, completedAt: true, assignedToId: true, checklistTemplateId: true, serviceStage: { select: { sequence: true } } },
       });
+      // Moving forward needs every required checklist step of the earlier stages signed. A
+      // manager can move it on regardless, with a reason. Cancelling a job is never held up.
+      let overridden: string[] = [];
+      if (stage.sequence > workOrder.serviceStage.sequence && input.condition !== "CANCELLED") {
+        const unsigned = await unsignedStepsBefore(transaction, workOrder, stage.sequence);
+        if (unsigned.length) {
+          const labels = unsigned.map((step) => step.label);
+          const isManager = internalUser.internalRole === UserRole.PORTAL_ADMINISTRATOR || internalUser.internalRole === UserRole.VACTECH_MANAGER;
+          if (!isManager) throw new UserFacingError(`Sign ${labels.length === 1 ? "this step" : "these steps"} first: ${labels.join("; ")}. A manager can override.`);
+          if (!input.overrideReason) throw new UserFacingError(`${labels.length === 1 ? "A required step is" : `${labels.length} required steps are`} unsigned: ${labels.join("; ")}. To move on anyway, give an override reason.`);
+          overridden = labels;
+        }
+      }
       const isCompleted = stage.code === "COMPLETED";
       // A finished or cancelled job isn't anyone's work any more.
       const nextAssigneeId = isCompleted || input.condition === "CANCELLED" ? null : input.handoff === "keep" ? workOrder.assignedToId : input.handoff || null;
@@ -237,8 +254,12 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
           condition: input.condition,
           changedById: internalUser.id,
           note: input.note,
+          overrideReason: overridden.length ? input.overrideReason : null,
         },
       });
+      if (overridden.length) {
+        await recordAudit(transaction, { workOrderId: input.workOrderId, actorUserId: internalUser.id, eventType: "checklist.overridden", entityType: "WorkOrderStatusHistory", entityId: statusHistory.id, metadata: { reason: input.overrideReason, unsignedSteps: overridden, movedTo: stage.displayName } });
+      }
       await recordAudit(transaction, {
         workOrderId: input.workOrderId,
         actorUserId: internalUser.id,

@@ -38,6 +38,13 @@ enum WorkOrderCondition {
   CANCELLED
 }
 
+/// How a checklist step is completed: a plain sign-off, a recorded reading, or a list of items each ticked or marked N/A.
+enum ChecklistStepType {
+  SIGN_OFF
+  READING
+  CHECKLIST
+}
+
 enum RecordVisibility {
   INTERNAL_ONLY
   CUSTOMER_VISIBLE
@@ -184,6 +191,7 @@ model User {
   assignedWork WorkOrder[] @relation("WorkOrderAssignee")
   assignmentsReceived WorkOrderAssignment[] @relation("AssignmentRecipient")
   assignmentsMade WorkOrderAssignment[] @relation("AssignmentAuthor")
+  stepRecords WorkOrderStepRecord[]
   updates ServiceUpdate[]
   findings Finding[]
   attachments Attachment[]
@@ -326,6 +334,7 @@ model ServiceStage {
   workOrders WorkOrder[]
   statusHistory WorkOrderStatusHistory[]
   assignments WorkOrderAssignment[]
+  checklistSteps ChecklistTemplateStep[]
   attachments Attachment[]
 }
 
@@ -357,6 +366,8 @@ model WorkOrder {
   customerContactPhone String?
   customerContactEmail String?
   serviceStageId String @db.Uuid
+  /// The checklist revision this job is worked under. It stays the same if a newer revision is issued later.
+  checklistTemplateId String? @db.Uuid
   /// When the work order entered its current stage, for "days in stage" on the queues.
   stageEnteredAt DateTime @default(now())
   /// The person the work order is with now. Empty means it's waiting in its stage's queue.
@@ -376,6 +387,8 @@ model WorkOrder {
   createdBy User @relation("WorkOrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
   assignedTo User? @relation("WorkOrderAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
   assignments WorkOrderAssignment[]
+  checklistTemplate ChecklistTemplate? @relation(fields: [checklistTemplateId], references: [id], onDelete: Restrict)
+  stepRecords WorkOrderStepRecord[]
   statusHistory WorkOrderStatusHistory[]
   updates ServiceUpdate[]
   findings Finding[]
@@ -408,6 +421,62 @@ model WorkOrderAssignment {
   @@index([workOrderId, createdAt])
 }
 
+/// One revision of the job order checklist, such as form 852-01-01 Rev. 9. New work orders use the active one.
+/// A revision is locked once a work order uses it; changes go into a new revision.
+model ChecklistTemplate {
+  id String @id @default(uuid()) @db.Uuid
+  formNumber String
+  revision String
+  name String
+  isActive Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  steps ChecklistTemplateStep[]
+  workOrders WorkOrder[]
+  @@unique([formNumber, revision])
+}
+
+/// A step on the checklist, done during one workflow stage.
+model ChecklistTemplateStep {
+  id String @id @default(uuid()) @db.Uuid
+  templateId String @db.Uuid
+  serviceStageId String @db.Uuid
+  sequence Int
+  label String
+  type ChecklistStepType @default(SIGN_OFF)
+  /// The unit printed after a reading, such as "mbar·l/s".
+  unit String?
+  /// The items of a CHECKLIST step, in order.
+  items String[]
+  /// Only QA, managers and administrators can sign this step.
+  requiresQa Boolean @default(false)
+  /// The job can't move past this step's stage until it's signed (a manager can override).
+  isRequired Boolean @default(true)
+  template ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  serviceStage ServiceStage @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)
+  records WorkOrderStepRecord[]
+  @@index([templateId, sequence])
+}
+
+/// A signed step on one work order: who did it and when, plus any reading or item results.
+model WorkOrderStepRecord {
+  id String @id @default(uuid()) @db.Uuid
+  workOrderId String @db.Uuid
+  templateStepId String @db.Uuid
+  performedById String @db.Uuid
+  performedAt DateTime @default(now())
+  /// The whole step didn't apply to this job.
+  notApplicable Boolean @default(false)
+  reading String?
+  checkedItems String[]
+  notApplicableItems String[]
+  note String?
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  templateStep ChecklistTemplateStep @relation(fields: [templateStepId], references: [id], onDelete: Restrict)
+  performedBy User @relation(fields: [performedById], references: [id], onDelete: Restrict)
+  @@unique([workOrderId, templateStepId])
+}
+
 model WorkOrderStatusHistory {
   id String @id @default(uuid()) @db.Uuid
   workOrderId String @db.Uuid
@@ -415,6 +484,8 @@ model WorkOrderStatusHistory {
   condition WorkOrderCondition
   changedById String @db.Uuid
   note String?
+  /// Set when a manager moved the job on with required checklist steps still unsigned: their reason.
+  overrideReason String?
   createdAt DateTime @default(now())
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   serviceStage ServiceStage @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)

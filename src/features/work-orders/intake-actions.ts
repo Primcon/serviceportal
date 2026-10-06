@@ -9,6 +9,7 @@ import { UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
 import { detailFields, detailsSchema } from "@/features/work-orders/details-schema";
 import { assignWorkOrderNumber, findOrCreateProductModel, modelDisplayName } from "@/features/work-orders/intake";
+import { ensureActiveChecklistTemplate } from "@/features/checklists/default-template";
 import { ensureInitialStages } from "@/features/work-orders/initial-stages";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser } from "@/services/authorization";
@@ -50,6 +51,7 @@ export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
 
     const user = await getActiveInternalUser();
     const receivedStage = await prisma.serviceStage.findUnique({ where: { code: "RECEIVED" } }) ?? await ensureInitialStages(prisma);
+    const checklist = await ensureActiveChecklistTemplate(prisma);
 
     createdId = await prisma.$transaction(async (transaction) => {
       const center = details.serviceCenterId ? await transaction.serviceCenter.findUnique({ where: { id: details.serviceCenterId } }) : null;
@@ -93,6 +95,7 @@ export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
           locationId: equipment.locationId,
           equipmentId: equipment.id,
           serviceStageId: receivedStage.id,
+          checklistTemplateId: checklist?.id ?? null,
           customerFacingStatus: receivedStage.customerFacingStatus,
           createdById: user.id,
           receivedAt: new Date(),
