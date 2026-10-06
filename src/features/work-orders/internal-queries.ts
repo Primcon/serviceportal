@@ -15,6 +15,7 @@ export async function getInternalWorkOrder(workOrderId: string) {
       serviceStage: { select: { displayName: true, code: true } },
       createdBy: { select: { displayName: true } },
       assignedTo: { select: { id: true, displayName: true } },
+      partsReceivedBy: { select: { displayName: true } },
       assignments: {
         orderBy: { createdAt: "desc" },
         include: { assignedTo: { select: { displayName: true } }, assignedBy: { select: { displayName: true } } },

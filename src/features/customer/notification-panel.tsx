@@ -4,9 +4,10 @@ import ActionFeedbackForm from "@/components/action-feedback-form";
 import { getCustomerNotificationHistory, getCustomerNotificationPreference } from "@/features/work-orders/customer-queries";
 import { updateCustomerNotificationPreference } from "./actions";
 import { getRequestActor } from "@/services/request-actor";
+import { shopTimeZone } from "@/lib/dates";
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone }).format(date);
 }
 
 function notificationStatusLabel(status: "PENDING" | "SENT" | "FAILED" | "LOGGED") {

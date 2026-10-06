@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListKind, UserRole, WorkOrderCondition } from "@prisma/client";
-import { AlertTriangle, ArrowLeft, BookOpen, Camera, Hand, ListChecks, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpen, Camera, Hand, ListChecks, PackageSearch, Printer, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { Badge } from "@/components/ui/badge";
@@ -18,21 +18,28 @@ import { ModelDocumentList } from "@/features/catalog/components/model-document-
 import { modelDocuments } from "@/features/catalog/queries";
 import { createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
 import { DetailsEditor } from "@/features/work-orders/components/details-editor";
+import { PartsEditor } from "@/features/work-orders/components/parts-editor";
 import { PhotoGallery } from "@/features/work-orders/components/photo-gallery";
 import { TimelineComposer } from "@/features/work-orders/components/timeline-composer";
 import { TimelineList } from "@/features/work-orders/components/timeline-list";
 import { getInternalWorkOrder, listActiveServiceStages } from "@/features/work-orders/internal-queries";
 import { buildTimeline } from "@/features/work-orders/timeline";
 import { listOptions, serviceCenters } from "@/features/settings/queries";
-import { copperClassificationLabels, customerStatusLabels, documentTypeLabels, formatEnumLabel, isElevatedPriority } from "@/lib/labels";
+import { copperClassificationLabels, customerStatusLabels, documentTypeLabels, formatEnumLabel, isElevatedPriority, partsKitLabels } from "@/lib/labels";
 import { firstParam, type SearchParams } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
+import { shopTimeZone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
 const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-const dateTime = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+const dateTime = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: shopTimeZone });
+
+/** A stored calendar date in the yyyy-mm-dd form a date input uses. */
+function dateInput(date: Date | null) {
+  return date ? date.toISOString().slice(0, 10) : null;
+}
 
 function Section({ id, icon, title, actions, children, className = "" }: { id?: string; icon: ReactNode; title: string; actions?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -126,6 +133,8 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
               <p className="mt-1 font-bold">{workOrder.serviceStage.displayName}</p>
               <p className="mt-0.5 text-sm text-muted">Customer sees: {customerStatusLabels[workOrder.customerFacingStatus]}</p>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <Link className={buttonStyles({ variant: "outline", size: "sm" })} href={`/workspace/work-orders/${workOrder.id}/traveler`}><Printer size={15} /> Traveler</Link>
             <DetailsEditor
               details={{
                 id: workOrder.id,
@@ -151,6 +160,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
               serviceCenters={centers}
               serviceTypes={serviceTypes}
             />
+            </div>
           </div>
         </div>
         {handlingWarning && (
@@ -257,6 +267,21 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
               ["Customer PO", workOrder.customerPurchaseOrder],
               ["RMA", workOrder.rmaReference],
               ["Opened by", workOrder.createdBy.displayName],
+            ]} />
+          </Section>
+
+          <Section
+            actions={<PartsEditor parts={{ workOrderId: workOrder.id, partsRequired: workOrder.partsRequired, partsKit: workOrder.partsKit, extraLaborHours: workOrder.extraLaborHours?.toString() ?? null, quotedAt: dateInput(workOrder.quotedAt), partsOrderedAt: dateInput(workOrder.partsOrderedAt), partsReceivedAt: dateInput(workOrder.partsReceivedAt), partsReceivedById: workOrder.partsReceivedById }} staff={staff} viewerId={viewer.id} />}
+            icon={<PackageSearch className="text-brand" size={20} />}
+            title="Parts and quote"
+          >
+            <Facts items={[
+              ["Parts required", workOrder.partsRequired && <span className="whitespace-pre-line">{workOrder.partsRequired}</span>],
+              ["Kit", workOrder.partsKit && partsKitLabels[workOrder.partsKit]],
+              ["Extra labor", workOrder.extraLaborHours && `${workOrder.extraLaborHours.toString()} hours`],
+              ["Customer quoted", workOrder.quotedAt && dateOnly.format(workOrder.quotedAt)],
+              ["Parts ordered", workOrder.partsOrderedAt && dateOnly.format(workOrder.partsOrderedAt)],
+              ["Parts received", workOrder.partsReceivedAt && `${dateOnly.format(workOrder.partsReceivedAt)}${workOrder.partsReceivedBy ? `, inspected by ${workOrder.partsReceivedBy.displayName}` : ""}`],
             ]} />
           </Section>
 

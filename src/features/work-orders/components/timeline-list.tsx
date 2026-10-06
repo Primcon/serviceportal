@@ -5,8 +5,9 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { customerStatusLabels, documentTypeLabels, formatEnumLabel, photoCategoryLabels } from "@/lib/labels";
 import type { TimelineEntry } from "@/features/work-orders/timeline";
+import { shopTimeZone } from "@/lib/dates";
 
-const dateTime = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+const dateTime = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: shopTimeZone });
 
 function Entry({ icon, tone, title, meta, internal, children }: { icon: ReactNode; tone: "brand" | "ink" | "muted"; title: ReactNode; meta: string; internal?: boolean; children?: ReactNode }) {
   const dot = tone === "brand" ? "bg-brand text-white" : tone === "ink" ? "bg-ink text-white" : "bg-surface text-muted border border-line";

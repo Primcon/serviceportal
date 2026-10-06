@@ -12,10 +12,11 @@ import { EquipmentTools } from "@/features/records/components/equipment-tools";
 import { getInternalEquipment } from "@/features/work-orders/internal-queries";
 import { customerStatusLabels, formatEnumLabel } from "@/lib/labels";
 import { requireWorkspaceUser } from "@/services/page-access";
+import { shopTimeZone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
-const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
 
 export default async function InternalEquipmentPage({ params }: { params: Promise<{ equipmentId: string }> }) {
   const viewer = await requireWorkspaceUser();

@@ -45,6 +45,13 @@ enum ChecklistStepType {
   CHECKLIST
 }
 
+/// The rebuild kit a repair needs, from the "Parts required" line of the job order form.
+enum PartsKit {
+  NONE
+  MINOR
+  MAJOR
+}
+
 enum RecordVisibility {
   INTERNAL_ONLY
   CUSTOMER_VISIBLE
@@ -189,6 +196,7 @@ model User {
   access UserAccess[]
   createdWork WorkOrder[] @relation("WorkOrderCreator")
   assignedWork WorkOrder[] @relation("WorkOrderAssignee")
+  partsReceived WorkOrder[] @relation("PartsReceiver")
   assignmentsReceived WorkOrderAssignment[] @relation("AssignmentRecipient")
   assignmentsMade WorkOrderAssignment[] @relation("AssignmentAuthor")
   stepRecords WorkOrderStepRecord[]
@@ -365,6 +373,15 @@ model WorkOrder {
   customerContactName String?
   customerContactPhone String?
   customerContactEmail String?
+  // Parts and quote section of job order form 852-01-01.
+  partsRequired String?
+  partsKit PartsKit?
+  extraLaborHours Decimal? @db.Decimal(6, 2)
+  quotedAt DateTime?
+  partsOrderedAt DateTime?
+  partsReceivedAt DateTime?
+  /// Who received and inspected the parts.
+  partsReceivedById String? @db.Uuid
   serviceStageId String @db.Uuid
   /// The checklist revision this job is worked under. It stays the same if a newer revision is issued later.
   checklistTemplateId String? @db.Uuid
@@ -386,6 +403,7 @@ model WorkOrder {
   serviceStage ServiceStage @relation(fields: [serviceStageId], references: [id], onDelete: Restrict)
   createdBy User @relation("WorkOrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
   assignedTo User? @relation("WorkOrderAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
+  partsReceivedBy User? @relation("PartsReceiver", fields: [partsReceivedById], references: [id], onDelete: Restrict)
   assignments WorkOrderAssignment[]
   checklistTemplate ChecklistTemplate? @relation(fields: [checklistTemplateId], references: [id], onDelete: Restrict)
   stepRecords WorkOrderStepRecord[]

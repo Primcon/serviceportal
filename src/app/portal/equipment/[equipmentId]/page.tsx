@@ -4,11 +4,12 @@ import { notFound } from "next/navigation";
 import { ModelDocumentList } from "@/features/catalog/components/model-document-list";
 import { getCustomerEquipment } from "@/features/work-orders/customer-queries";
 import { getRequestActor } from "@/services/request-actor";
+import { shopTimeZone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone }).format(date);
 }
 
 export default async function CustomerEquipmentPage({ params }: { params: Promise<{ equipmentId: string }> }) {

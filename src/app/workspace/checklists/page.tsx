@@ -9,10 +9,11 @@ import { createStartingChecklist } from "@/features/checklists/template-actions"
 import { managerRoles } from "@/features/navigation/workspace-items";
 import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
+import { shopTimeZone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
-const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
 
 export default async function ChecklistsPage() {
   await requireWorkspaceUser(managerRoles);

@@ -83,7 +83,8 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
     assignableStaff(),
   ]);
   const filtersApplied = Boolean(search || status || condition || stageId || centerId || priority || companyId || assignee || openOnly || overdueOnly);
-  const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+  // Promised dates are calendar dates stored as midnight UTC.
+  const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
   return (
     <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8">

@@ -11,10 +11,11 @@ import { getProductModel, productModelOptions } from "@/features/catalog/queries
 import { modelDisplayName } from "@/features/work-orders/intake";
 import { documentTypeLabels } from "@/lib/labels";
 import { requireWorkspaceUser } from "@/services/page-access";
+import { shopTimeZone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
-const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
 
 export default async function ModelPage({ params }: { params: Promise<{ modelId: string }> }) {
   const viewer = await requireWorkspaceUser();

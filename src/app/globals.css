@@ -44,3 +44,18 @@ h6 {
 	outline: 2px solid var(--color-brand);
 	outline-offset: 2px;
 }
+
+/* Printed pages (the traveler) use letter paper with a narrow margin and keep their shading. */
+@page {
+	size: letter;
+	margin: 0.4in;
+}
+
+@media print {
+	html,
+	body {
+		background: #fff;
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+}

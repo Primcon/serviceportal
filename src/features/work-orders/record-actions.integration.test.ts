@@ -2,7 +2,7 @@ import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaClient, UserRole } from "@prisma/client";
 import { getCustomerWorkOrder } from "@/features/work-orders/customer-queries";
-import { deletePhoto, postWorkOrderEntry, updatePhoto, updateWorkOrderDetails } from "@/features/work-orders/record-actions";
+import { deletePhoto, postWorkOrderEntry, updatePartsAndQuote, updatePhoto, updateWorkOrderDetails } from "@/features/work-orders/record-actions";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
 import { deletePrivateFile } from "@/services/private-storage";
 
@@ -94,6 +94,36 @@ describe("work order details", () => {
     const same = await updateWorkOrderDetails(form({ workOrderId, ...baseDetails, customerPurchaseOrder: "PO-55120", promisedAt: "2026-10-28", toolId: "ETCH-07", contaminants: "NF3", copperClassification: "NON_COPPER", customerContactEmail: "buyer@example.test" }));
     expect(same).toEqual({ status: "success", message: "No changes to save." });
     await expect(updateWorkOrderDetails(form({ workOrderId, ...baseDetails, customerContactEmail: "not-an-email" }))).resolves.toMatchObject({ status: "error", fieldErrors: { customerContactEmail: "Enter a valid email address." } });
+  });
+});
+
+describe("parts and quote", () => {
+  const blank = { partsRequired: "", partsKit: "", extraLaborHours: "", quotedAt: "", partsOrderedAt: "", partsReceivedAt: "", partsReceivedById: "" };
+
+  it("saves the parts section of the form and records what changed", async () => {
+    await expect(updatePartsAndQuote(form({ workOrderId, ...blank, partsRequired: "Bearings\nShaft seal", partsKit: "MAJOR", extraLaborHours: "2.5", quotedAt: "2026-10-12", partsOrderedAt: "2026-10-13" }))).resolves.toEqual({ status: "success", message: "Parts and quote saved." });
+    const saved = await prisma.workOrder.findUniqueOrThrow({ where: { id: workOrderId } });
+    expect(saved).toMatchObject({ partsRequired: "Bearings\nShaft seal", partsKit: "MAJOR", partsReceivedAt: null, partsReceivedById: null });
+    expect(saved.extraLaborHours?.toNumber()).toBe(2.5);
+    expect(saved.quotedAt?.toISOString()).toBe("2026-10-12T00:00:00.000Z");
+
+    // Saving the same values again changes nothing, including the decimal hours.
+    await expect(updatePartsAndQuote(form({ workOrderId, ...blank, partsRequired: "Bearings\nShaft seal", partsKit: "MAJOR", extraLaborHours: "2.50", quotedAt: "2026-10-12", partsOrderedAt: "2026-10-13" }))).resolves.toEqual({ status: "success", message: "No changes to save." });
+    const audit = await prisma.auditEvent.findMany({ where: { workOrderId, eventType: "work-order.parts-updated" } });
+    expect(audit).toHaveLength(1);
+    expect(audit[0].metadata).toMatchObject({ partsKit: { from: null, to: "MAJOR" }, extraLaborHours: { from: null, to: 2.5 } });
+  });
+
+  it("takes whoever records the parts as received as the person who inspected them", async () => {
+    await updatePartsAndQuote(form({ workOrderId, ...blank, partsReceivedAt: "2026-10-20" }));
+    expect((await prisma.workOrder.findUniqueOrThrow({ where: { id: workOrderId } })).partsReceivedById).toBe(managerId);
+    // Clearing the date clears the person too.
+    await updatePartsAndQuote(form({ workOrderId, ...blank }));
+    expect(await prisma.workOrder.findUniqueOrThrow({ where: { id: workOrderId } })).toMatchObject({ partsReceivedAt: null, partsReceivedById: null, partsKit: null });
+  });
+
+  it("rejects hours that aren't a number", async () => {
+    await expect(updatePartsAndQuote(form({ workOrderId, ...blank, extraLaborHours: "two" }))).resolves.toMatchObject({ status: "error", fieldErrors: { extraLaborHours: "Enter hours as a number, such as 2.5." } });
   });
 });
 
