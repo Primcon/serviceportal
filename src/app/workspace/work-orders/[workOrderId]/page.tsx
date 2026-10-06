@@ -35,6 +35,7 @@ export const dynamic = "force-dynamic";
 
 const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const dateTime = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: shopTimeZone });
+const signedOn = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: shopTimeZone });
 
 /** A stored calendar date in the yyyy-mm-dd form a date input uses. */
 function dateInput(date: Date | null) {
@@ -98,7 +99,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
     caption: photo.caption,
     photoCategory: photo.photoCategory,
     visibility: photo.visibility,
-    uploadedAt: photo.uploadedAt.toISOString(),
+    uploadedOn: dateTime.format(photo.uploadedAt),
     uploadedBy: photo.uploadedBy.displayName,
     canDelete: isManager || photo.uploadedById === viewer.id,
   }));
@@ -196,7 +197,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
                   isRequired: step.isRequired,
                   stageId: step.serviceStage.id,
                   stageName: step.serviceStage.displayName,
-                  record: step.record && { performedById: step.record.performedById, performedBy: step.record.performedBy.displayName, initials: initials(step.record.performedBy.displayName), performedAt: step.record.performedAt.toISOString(), notApplicable: step.record.notApplicable, reading: step.record.reading, checkedItems: step.record.checkedItems, notApplicableItems: step.record.notApplicableItems, note: step.record.note },
+                  record: step.record && { performedById: step.record.performedById, performedBy: step.record.performedBy.displayName, initials: initials(step.record.performedBy.displayName), signedOn: signedOn.format(step.record.performedAt), notApplicable: step.record.notApplicable, reading: step.record.reading, checkedItems: step.record.checkedItems, notApplicableItems: step.record.notApplicableItems, note: step.record.note },
                 }))}
                 viewerId={viewer.id}
                 workOrderId={workOrder.id}

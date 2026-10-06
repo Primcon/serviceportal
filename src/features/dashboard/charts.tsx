@@ -26,7 +26,7 @@ export function BarList({ rows, unit }: { rows: BarRow[]; unit: string }) {
             <span aria-hidden className="flex h-4 items-center">
               {row.value > 0 && <span className="h-3.5 min-w-1 rounded-r-[4px] bg-chart-1 group-hover:opacity-80" style={{ width: `${(row.value / largest) * 100}%` }} />}
             </span>
-            <span className="text-right text-sm tabular-nums"><span className="font-bold">{row.value}</span><span className="sr-only"> {unit}</span>{row.note && <span className="ml-2 text-xs text-muted">{row.note}</span>}</span>
+            <span className="text-right text-sm tabular-nums"><span className="font-bold">{row.value}</span><span className="sr-only"> {row.value === 1 ? unit.replace(/s$/, "") : unit}</span>{row.note && <span className="ml-2 text-xs text-muted">{row.note}</span>}</span>
           </>
         );
         const layout = "group grid grid-cols-[minmax(0,13.5rem)_minmax(0,1fr)_minmax(5.5rem,auto)] items-center gap-3 px-2 py-1.5";

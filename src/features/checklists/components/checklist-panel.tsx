@@ -18,10 +18,8 @@ export type PanelStep = {
   isRequired: boolean;
   stageId: string;
   stageName: string;
-  record: { performedById: string; performedBy: string; initials: string; performedAt: string; notApplicable: boolean; reading: string | null; checkedItems: string[]; notApplicableItems: string[]; note: string | null } | null;
+  record: { performedById: string; performedBy: string; initials: string; /** When it was signed, already formatted in the shop's time zone. */ signedOn: string; notApplicable: boolean; reading: string | null; checkedItems: string[]; notApplicableItems: string[]; note: string | null } | null;
 };
-
-const signedOn = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 function SignedStep({ step, workOrderId, canClear }: { step: PanelStep; workOrderId: string; canClear: boolean }) {
   const record = step.record!;
@@ -30,7 +28,7 @@ function SignedStep({ step, workOrderId, canClear }: { step: PanelStep; workOrde
       <div className="min-w-0 text-sm">
         <p className="flex flex-wrap items-center gap-2">
           <span className="grid h-7 min-w-7 place-items-center bg-ink px-1.5 font-mono text-xs font-bold text-white" title={record.performedBy}>{record.initials}</span>
-          <span className="text-muted">{record.performedBy} · {signedOn.format(new Date(record.performedAt))}</span>
+          <span className="text-muted">{record.performedBy} · {record.signedOn}</span>
           {record.notApplicable && <Badge tone="neutral">Not applicable</Badge>}
         </p>
         {record.reading && <p className="mt-1.5 font-bold">{record.reading}{step.unit && <span className="font-normal text-muted"> {step.unit}</span>}</p>}
