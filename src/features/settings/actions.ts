@@ -91,7 +91,7 @@ export async function saveServiceCenter(formData: FormData): Promise<ActionResul
         const existing = await transaction.serviceCenter.findUnique({ where: { id: input.id }, select: { code: true, _count: { select: { workOrders: true } } } });
         if (!existing) throw new UserFacingError("Service center not found.");
         if (existing.code !== input.code && existing._count.workOrders > 0) {
-          throw new UserFacingError("This center's code is already part of work order numbers, so it can't be changed. Rename it instead.");
+          throw new UserFacingError("Work orders already use this center's code, so it can't be changed. Rename it instead.");
         }
       }
       const data = {

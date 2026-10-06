@@ -107,11 +107,10 @@ export function NewWorkOrderForm({ companies, models, serviceCenters, priorities
   const [pump, setPump] = useState<PumpResult | null>(initialPump);
   const [companyId, setCompanyId] = useState("");
   const [centerId, setCenterId] = useState(serviceCenters.length === 1 ? serviceCenters[0].id : "");
-  const centerCode = serviceCenters.find((center) => center.id === centerId)?.code;
   const locations = companies.find((company) => company.id === companyId)?.locations ?? [];
   const intake = pumpMode === "existing" ? pump?.lastIntake : null;
   const intakePrefilled = Boolean(intake && Object.entries(intake).some(([key, fieldValue]) => fieldValue && !(key === "copperClassification" && fieldValue === "UNKNOWN")));
-  const previewNumber = centerCode ? `${nextNumber} ${centerCode}` : String(nextNumber);
+  const previewNumber = String(nextNumber);
 
   return (
     <ActionFeedbackForm action={openWorkOrder} className="grid gap-6" successMessage="Work order opened.">

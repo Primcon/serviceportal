@@ -4,12 +4,12 @@
  */
 
 export const auditCategories = {
-  "work-orders": { label: "Work orders", prefixes: ["work-order", "work-order-number", "service-update", "internal-note", "finding"] },
+  "work-orders": { label: "Work orders", prefixes: ["work-order", "work-order-number", "service-update", "internal-note", "finding", "warranty"] },
   checklist: { label: "Checklist and sign-offs", prefixes: ["checklist", "checklist-step", "checklist-template"] },
   files: { label: "Photos and documents", prefixes: ["photo", "document", "model-document"] },
   records: { label: "Customers, pumps and models", prefixes: ["company", "location", "equipment", "product-model"] },
   access: { label: "Users and access", prefixes: ["user", "user-access", "access-request"] },
-  settings: { label: "Settings and reports", prefixes: ["service-stage", "list-option", "service-center", "report", "report-schedule"] },
+  settings: { label: "Settings and reports", prefixes: ["service-stage", "list-option", "service-center", "portal-setting", "report", "report-schedule"] },
 } as const;
 
 export type AuditCategory = keyof typeof auditCategories;
@@ -19,6 +19,11 @@ const titles: Record<string, string> = {
   "work-order.status-changed": "Stage or condition changed",
   "work-order.details-updated": "Work order details edited",
   "work-order.parts-updated": "Parts and quote edited",
+  "work-order.shipping-updated": "Ship date or warranty edited",
+  "warranty.claim-opened": "Warranty claim opened",
+  "warranty.claim-approved": "Warranty claim approved",
+  "warranty.claim-denied": "Warranty claim denied",
+  "warranty.claim-withdrawn": "Warranty claim withdrawn",
   "work-order.assigned": "Work order handed to someone",
   "work-order.unassigned": "Work order returned to the queue",
   "work-order-number.next-set": "Next work order number set",
@@ -64,6 +69,11 @@ const titles: Record<string, string> = {
   "product-model.created": "Model added to the catalog",
   "product-model.updated": "Catalog model edited",
   "product-model.merged": "Duplicate model merged in",
+  "product-model.warranty-set": "Model's standard warranty set",
+  "company.contract-warranty-set": "Customer's contract warranty set",
+  "user.warranty-approver-added": "Made a warranty approver",
+  "user.warranty-approver-removed": "No longer a warranty approver",
+  "portal-setting.updated": "Portal setting changed",
   "user.enabled": "User enabled",
   "user.disabled": "User disabled",
   "user.internal-role-changed": "Staff role changed",
@@ -121,6 +131,13 @@ const fieldLabels: Record<string, string> = {
   partsOrderedAt: "Parts ordered",
   partsReceivedAt: "Parts received",
   partsReceivedById: "Parts received by",
+  shippedAt: "Ship date",
+  warrantyMonths: "Warranty (months)",
+  warrantyEndsAt: "Warranty ends",
+  contractWarrantyMonths: "Contract warranty (months)",
+  claimedAgainst: "Claimed against WIP",
+  previousDecision: "Earlier decision",
+  customersSeeWarranty: "Customers see warranty dates",
   qa: "QA sign-off",
   movedTo: "Moved to",
   unsignedSteps: "Unsigned steps",

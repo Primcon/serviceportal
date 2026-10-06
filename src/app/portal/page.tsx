@@ -17,7 +17,6 @@ import { getRequestActor } from "@/services/request-actor";
 export const dynamic = "force-dynamic";
 
 const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: shopTimeZone });
-const calendarDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
 export default async function CustomerPortalPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
@@ -90,7 +89,7 @@ export default async function CustomerPortalPage({ searchParams }: { searchParam
                 {!isDone && stepNumber > 0 && (
                   <>
                     <div aria-hidden className="mt-1.5 flex gap-1">{steps.map((step) => <span className={`h-1.5 flex-1 ${step.state === "upcoming" ? "bg-line" : step.state === "current" ? "bg-brand" : "bg-ink"}`} key={step.label} />)}</div>
-                    <p className="mt-1.5 text-xs text-muted">Step {stepNumber} of {steps.length}{workOrder.promisedAt && ` · Expected by ${calendarDay.format(workOrder.promisedAt)}`}</p>
+                    <p className="mt-1.5 text-xs text-muted">Step {stepNumber} of {steps.length}</p>
                   </>
                 )}
               </div>

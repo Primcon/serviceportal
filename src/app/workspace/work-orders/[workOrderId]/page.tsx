@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListKind, UserRole, WorkOrderCondition } from "@prisma/client";
-import { AlertTriangle, ArrowLeft, BookOpen, Camera, Eye, Hand, ListChecks, PackageSearch, Printer, ClipboardCheck, FileText, History, Info, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpen, Camera, Eye, Hand, ListChecks, PackageSearch, Printer, ClipboardCheck, FileText, History, Info, ShieldCheck, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,9 @@ import { assignableStaff } from "@/features/assignments/assign";
 import { wholeDaysSince } from "@/features/work-orders/queue";
 import { ModelDocumentList } from "@/features/catalog/components/model-document-list";
 import { modelDocuments } from "@/features/catalog/queries";
+import { ClaimDecision, OpenClaimButton, ShippingEditor } from "@/features/warranty/components/warranty-tools";
+import { canApproveWarranty, previousShippedRepair, standardWarrantyFor } from "@/features/warranty/queries";
+import { shopToday, warrantyLengthLabel, warrantyState } from "@/features/warranty/warranty";
 import { createInternalDocument, updateWorkOrderStatus } from "@/features/work-orders/actions";
 import { DetailsEditor } from "@/features/work-orders/components/details-editor";
 import { PartsEditor } from "@/features/work-orders/components/parts-editor";
@@ -74,7 +77,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
   const workOrder = await getInternalWorkOrder(workOrderId);
   if (!workOrder) notFound();
 
-  const [stages, priorities, serviceTypes, centers, manuals, staff, checklist, customerPortalUsers] = await Promise.all([
+  const [stages, priorities, serviceTypes, centers, manuals, staff, checklist, standardWarranty, viewerApprovesWarranty, previousRepair, customerPortalUsers] = await Promise.all([
     listActiveServiceStages(),
     listOptions(ListKind.PRIORITY),
     listOptions(ListKind.SERVICE_TYPE),
@@ -82,6 +85,9 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
     modelDocuments(workOrder.equipment.productModelId),
     assignableStaff(),
     getWorkOrderChecklist(workOrder.id, workOrder.checklistTemplateId),
+    standardWarrantyFor(prisma, workOrder.id),
+    canApproveWarranty(viewer.id),
+    previousShippedRepair(prisma, workOrder),
     prisma.userAccess.count({
       where: {
         companyId: workOrder.companyId,
@@ -109,6 +115,15 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
   const daysInStage = wholeDaysSince(workOrder.stageEnteredAt);
   const signedSteps = checklist?.steps.filter((step) => step.record).length ?? 0;
   const handlingWarning = workOrder.copperClassification !== "UNKNOWN" || workOrder.contaminants;
+  // Warranty: this repair's own cover, and whether the pump came back inside the cover of its last repair.
+  const today = shopToday();
+  const ownWarranty = warrantyState(workOrder.warrantyEndsAt, today);
+  const warrantyMonths = workOrder.warrantyMonths ?? standardWarranty.months;
+  const standardNote = standardWarranty.months === null ? "none set for this model or customer" : `${warrantyLengthLabel(standardWarranty.months)}, from the ${standardWarranty.source === "contract" ? "customer's contract" : "model"}`;
+  const arrivedOn = shopToday(workOrder.receivedAt ?? workOrder.createdAt);
+  const claimTarget = workOrder.warrantyClaimOn ?? previousRepair;
+  const arrivedInWarranty = claimTarget ? warrantyState(claimTarget.warrantyEndsAt, arrivedOn) === "active" : false;
+  const claimDecisionLabels = { PENDING: "Waiting for a decision", APPROVED: "Approved: covered by warranty", DENIED: "Denied: not covered" } as const;
 
   return (
     <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
@@ -165,6 +180,12 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
             </div>
           </div>
         </div>
+        {arrivedInWarranty && !workOrder.warrantyClaimOn && !isClosed && claimTarget && (
+          <p className="mt-5 flex flex-wrap items-center gap-2 border-l-4 border-brand bg-brand-soft px-4 py-2.5 text-sm">
+            <ShieldCheck className="shrink-0 text-brand" size={18} />
+            <span>This pump came back inside the warranty on <Link className="font-bold hover:text-brand" href={`/workspace/work-orders/${claimTarget.id}`}>WIP {claimTarget.workOrderNumber}</Link>, which covers it until {dateOnly.format(claimTarget.warrantyEndsAt!)}. <a className="font-bold text-brand" href="#warranty">Open a warranty claim</a> if this is the same fault.</span>
+          </p>
+        )}
         {handlingWarning && (
           <p className="mt-5 flex items-center gap-2 border-2 border-brand bg-danger-soft px-4 py-2.5 text-sm font-bold text-danger">
             <AlertTriangle className="shrink-0" size={18} />
@@ -259,6 +280,55 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
               )}
               <button className={buttonStyles()}>Update state</button>
             </ActionFeedbackForm>
+          </Section>
+
+          <Section
+            actions={<ShippingEditor canChangeLength={isManager || viewerApprovesWarranty} shippedAt={dateInput(workOrder.shippedAt)} standardNote={standardNote} today={dateInput(today)!} warrantyMonths={workOrder.warrantyMonths} workOrderId={workOrder.id} />}
+            icon={<ShieldCheck className="text-brand" size={20} />}
+            id="warranty"
+            title="Shipping and warranty"
+          >
+            <Facts items={[
+              ["Shipped", workOrder.shippedAt && dateOnly.format(workOrder.shippedAt)],
+              ["Warranty", warrantyMonths === null ? null : warrantyMonths === 0 ? "None" : <>{warrantyLengthLabel(warrantyMonths)}{workOrder.warrantyMonths === null && <span className="font-normal text-muted"> ({standardWarranty.source === "contract" ? "customer's contract" : "model standard"})</span>}</>],
+              ["Covered until", workOrder.warrantyEndsAt && <span className="flex flex-wrap items-center gap-2">{dateOnly.format(workOrder.warrantyEndsAt)}<Badge tone={ownWarranty === "active" ? "success" : "neutral"}>{ownWarranty === "active" ? "In warranty" : "Expired"}</Badge></span>],
+            ]} />
+            {!workOrder.shippedAt && <p className="mt-3 text-xs text-muted">The warranty starts on the ship date, which is recorded when the job moves to Shipped.</p>}
+            {warrantyMonths === null && <p className="mt-3 text-xs text-muted">No standard warranty is set for this model or customer. Set one on the model&apos;s or customer&apos;s page, or enter a length here.</p>}
+            {workOrder.warrantyClaims.length > 0 && (
+              <p className="mt-3 border-t border-line pt-3 text-sm text-muted">
+                Claimed against by {workOrder.warrantyClaims.map((claim, index) => (
+                  <span key={claim.id}>{index > 0 && ", "}<Link className="font-bold text-ink hover:text-brand" href={`/workspace/work-orders/${claim.id}`}>WIP {claim.workOrderNumber}</Link>{claim.warrantyDecision && ` (${formatEnumLabel(claim.warrantyDecision).toLowerCase()})`}</span>
+                ))}
+              </p>
+            )}
+
+            {(workOrder.warrantyClaimOn || (previousRepair && !isClosed)) && claimTarget && (
+              <div className="mt-4 border-t border-line pt-4">
+                <h3 className="text-sm font-bold">Warranty claim</h3>
+                <p className="mt-1 text-sm text-muted">
+                  {workOrder.warrantyClaimOn ? "Claimed against " : "Last repaired on "}
+                  <Link className="font-bold text-ink hover:text-brand" href={`/workspace/work-orders/${claimTarget.id}`}>WIP {claimTarget.workOrderNumber}</Link>
+                  {claimTarget.shippedAt && `, shipped ${dateOnly.format(claimTarget.shippedAt)}`}.
+                  {claimTarget.warrantyEndsAt
+                    ? ` Its warranty ${arrivedInWarranty ? "covers" : "ended on"} ${arrivedInWarranty ? `this pump until ${dateOnly.format(claimTarget.warrantyEndsAt)}` : `${dateOnly.format(claimTarget.warrantyEndsAt)}, before this pump came back`}.`
+                    : " That repair has no warranty recorded."}
+                </p>
+                {workOrder.warrantyClaimOn && workOrder.warrantyDecision ? (
+                  <div className="mt-3 grid gap-3">
+                    <div>
+                      <Badge tone={workOrder.warrantyDecision === "APPROVED" ? "success" : workOrder.warrantyDecision === "DENIED" ? "danger" : "brand"}>{claimDecisionLabels[workOrder.warrantyDecision]}</Badge>
+                      {workOrder.warrantyDecidedBy && workOrder.warrantyDecidedAt && <p className="mt-2 text-xs text-muted">{workOrder.warrantyDecidedBy.displayName}, {dateTime.format(workOrder.warrantyDecidedAt)}</p>}
+                      {workOrder.warrantyDecisionNote && <p className="mt-1 whitespace-pre-line text-sm">{workOrder.warrantyDecisionNote}</p>}
+                    </div>
+                    {!isClosed && <ClaimDecision canDecide={viewerApprovesWarranty} decision={workOrder.warrantyDecision} workOrderId={workOrder.id} />}
+                    {workOrder.warrantyDecision === "PENDING" && !viewerApprovesWarranty && <p className="text-xs text-muted">A warranty approver decides this. They&apos;ve been emailed.</p>}
+                  </div>
+                ) : (
+                  <div className="mt-3"><OpenClaimButton previousNumber={claimTarget.workOrderNumber} workOrderId={workOrder.id} /></div>
+                )}
+              </div>
+            )}
           </Section>
 
           <Section icon={<Info className="text-brand" size={20} />} title="Details">

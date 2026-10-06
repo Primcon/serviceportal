@@ -31,7 +31,7 @@ const newPumpSchema = z.object({
 /**
  * Opens a work order when a pump arrives. The pump is either one already in the register or a
  * new one entered on the same form (with a new catalog model if needed). The portal assigns the
- * next WIP number, with its service center suffix, and staff land on the new work order.
+ * next WIP number, and staff land on the new work order.
  */
 export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
   let createdId = "";
@@ -56,7 +56,7 @@ export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
     createdId = await prisma.$transaction(async (transaction) => {
       const center = details.serviceCenterId ? await transaction.serviceCenter.findUnique({ where: { id: details.serviceCenterId } }) : null;
       if (details.serviceCenterId && !center) throw new UserFacingError("Service center not found.");
-      // The center's code is part of the WIP number, so it's required once any center is set up.
+      // Customers are shown the center's contact details, so it's required once any center is set up.
       if (!center && await transaction.serviceCenter.count({ where: { isActive: true } }) > 0) throw new UserFacingError("Choose the service center doing the work.");
 
       let equipment: { id: string; companyId: string; locationId: string | null };
@@ -86,7 +86,7 @@ export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
       }
 
       // Taken last, so the counter row is locked only briefly.
-      const workOrderNumber = await assignWorkOrderNumber(transaction, center?.code ?? null);
+      const workOrderNumber = await assignWorkOrderNumber(transaction);
       const workOrder = await transaction.workOrder.create({
         data: {
           ...details,

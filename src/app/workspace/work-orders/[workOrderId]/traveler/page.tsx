@@ -65,6 +65,7 @@ export default async function TravelerPage({ params }: { params: Promise<{ workO
   const partsPosition = partsIndex === -1 ? groups.length : partsIndex;
 
   const warning = [
+    workOrder.warrantyDecision && `Warranty claim (${workOrder.warrantyDecision.toLowerCase()})`,
     workOrder.copperClassification !== "UNKNOWN" && copperClassificationLabels[workOrder.copperClassification].toUpperCase(),
     workOrder.contaminants && `Contaminants: ${workOrder.contaminants}`,
     workOrder.reasonForService && `Reason: ${workOrder.reasonForService}`,

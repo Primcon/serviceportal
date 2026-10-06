@@ -103,6 +103,13 @@ enum ListKind {
   SERVICE_TYPE
 }
 
+/// Where a warranty claim stands. A claim is a repair that staff have asked to be covered by the warranty on an earlier repair.
+enum WarrantyDecision {
+  PENDING
+  APPROVED
+  DENIED
+}
+
 enum AccessRequestStatus {
   PENDING
   APPROVED
@@ -147,6 +154,8 @@ enum ReportRunStatus {
 model Company {
   id String @id @default(uuid()) @db.Uuid
   name String
+  /// The repair warranty this customer's service contract gives, in months. When set it's used instead of the pump model's standard warranty.
+  contractWarrantyMonths Int?
   /// Set when the customer is archived: hidden from pickers, history kept.
   archivedAt DateTime?
   /// Set when this customer was merged into another as a duplicate. Its records moved there; this row stays so imports can still find it.
@@ -200,6 +209,8 @@ model User {
   displayName String
   isActive Boolean @default(true)
   internalRole UserRole?
+  /// One of the named people who decide warranty claims.
+  canApproveWarranty Boolean @default(false)
   legacySource String?
   legacyId String?
   createdAt DateTime @default(now())
@@ -208,6 +219,7 @@ model User {
   createdWork WorkOrder[] @relation("WorkOrderCreator")
   assignedWork WorkOrder[] @relation("WorkOrderAssignee")
   partsReceived WorkOrder[] @relation("PartsReceiver")
+  warrantyDecisions WorkOrder[] @relation("WarrantyDecider")
   assignmentsReceived WorkOrderAssignment[] @relation("AssignmentRecipient")
   assignmentsMade WorkOrderAssignment[] @relation("AssignmentAuthor")
   stepRecords WorkOrderStepRecord[]
@@ -281,11 +293,13 @@ model Equipment {
   @@index([productModelId])
 }
 
-/// A manufacturer and model pair, such as Edwards IL70N. Manuals and (later) warranty terms attach here once for every pump of the model.
+/// A manufacturer and model pair, such as Edwards IL70N. Manuals and the standard repair warranty attach here once for every pump of the model.
 model ProductModel {
   id String @id @default(uuid()) @db.Uuid
   manufacturer String?
   name String
+  /// The standard repair warranty for this model, in months. Empty means no standard warranty is set.
+  warrantyMonths Int?
   isActive Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -313,7 +327,7 @@ model ModelDocument {
   @@index([productModelId])
 }
 
-/// A VacTech facility that performs repairs. Its code is the suffix on work order (WIP) numbers, such as "AZ" in "48366 AZ".
+/// A VacTech facility that performs repairs. Work order (WIP) numbers are plain numbers with no center suffix.
 model ServiceCenter {
   id String @id @default(uuid()) @db.Uuid
   code String @unique
@@ -331,6 +345,13 @@ model ServiceCenter {
 model NumberSequence {
   name String @id
   nextValue Int
+  updatedAt DateTime @updatedAt
+}
+
+/// A portal-wide choice an administrator can change, one row per setting. "customer-warranty-visible" is "true" when customers are shown warranty dates.
+model PortalSetting {
+  key String @id
+  value String
   updatedAt DateTime @updatedAt
 }
 
@@ -401,6 +422,18 @@ model WorkOrder {
   partsReceivedAt DateTime?
   /// Who received and inspected the parts.
   partsReceivedById String? @db.Uuid
+  /// The day the pump shipped back to the customer (a calendar date, stored at midnight UTC). The repair warranty starts here.
+  shippedAt DateTime?
+  /// The length of this repair's warranty in months, fixed when it ships so later changes to the model or contract don't alter it.
+  warrantyMonths Int?
+  /// The last day of the warranty (a calendar date): the ship date plus the warranty length.
+  warrantyEndsAt DateTime?
+  /// Set when this job is a warranty claim: the earlier repair whose warranty it's claimed under.
+  warrantyClaimOnId String? @db.Uuid
+  warrantyDecision WarrantyDecision?
+  warrantyDecidedById String? @db.Uuid
+  warrantyDecidedAt DateTime?
+  warrantyDecisionNote String?
   serviceStageId String @db.Uuid
   /// The checklist revision this job is worked under. It stays the same if a newer revision is issued later.
   checklistTemplateId String? @db.Uuid
@@ -423,6 +456,9 @@ model WorkOrder {
   createdBy User @relation("WorkOrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
   assignedTo User? @relation("WorkOrderAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
   partsReceivedBy User? @relation("PartsReceiver", fields: [partsReceivedById], references: [id], onDelete: Restrict)
+  warrantyClaimOn WorkOrder? @relation("WarrantyClaim", fields: [warrantyClaimOnId], references: [id], onDelete: Restrict)
+  warrantyClaims WorkOrder[] @relation("WarrantyClaim")
+  warrantyDecidedBy User? @relation("WarrantyDecider", fields: [warrantyDecidedById], references: [id], onDelete: Restrict)
   assignments WorkOrderAssignment[]
   checklistTemplate ChecklistTemplate? @relation(fields: [checklistTemplateId], references: [id], onDelete: Restrict)
   stepRecords WorkOrderStepRecord[]
@@ -440,6 +476,8 @@ model WorkOrder {
   @@index([serviceStageId])
   @@index([locationId])
   @@index([assignedToId])
+  @@index([warrantyClaimOnId])
+  @@index([warrantyDecision])
 }
 
 /// Each time a work order changes hands: who it went to (or back to the queue), who did it, and the handoff note.

@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { CalendarClock, ClipboardList, Hand, Hourglass, Inbox, KanbanSquare } from "lucide-react";
+import { CalendarClock, ClipboardList, Hand, Hourglass, Inbox, KanbanSquare, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { buttonStyles } from "@/components/ui/styles";
 import { QueueList } from "@/features/work-orders/components/queue-list";
+import { canApproveWarranty, pendingWarrantyClaims } from "@/features/warranty/queries";
 import { openWorkOrders, queueCounts } from "@/features/work-orders/queue";
 import { requireWorkspaceUser } from "@/services/page-access";
 
@@ -31,6 +32,8 @@ export default async function WorkspacePage() {
     openWorkOrders({ assignedToId: viewer.id }, queuePreview),
     openWorkOrders({ assignedToId: null }, queuePreview),
   ]);
+  // Only the named warranty approvers are shown claims to decide.
+  const claims = (await canApproveWarranty(viewer.id)) ? await pendingWarrantyClaims() : [];
   const tiles = [
     { label: "With me", value: counts.mine, href: "/workspace/work-orders?assignee=me&open=1", icon: <Hand size={18} />, accent: true },
     { label: "Waiting in the queue", value: counts.unassigned, href: "/workspace/work-orders?assignee=none&open=1", icon: <Inbox size={18} /> },
@@ -63,6 +66,21 @@ export default async function WorkspacePage() {
       </section>
 
       <div className="mt-8 grid gap-6">
+        {claims.length > 0 && (
+          <section className="border-y border-line border-l-4 border-l-brand bg-paper">
+            <div className="border-b border-line px-5 py-4"><h2 className="flex items-center gap-2 font-bold"><ShieldAlert className="text-brand" size={18} /> Warranty claims to decide <span className="font-normal text-muted">({claims.length})</span></h2><p className="mt-0.5 text-sm text-muted">Open a job to approve or deny its claim.</p></div>
+            <ul className="divide-y divide-line">
+              {claims.map((claim) => (
+                <li key={claim.id}>
+                  <Link className="group flex flex-wrap items-center justify-between gap-3 px-5 py-3" href={`/workspace/work-orders/${claim.id}#warranty`}>
+                    <span className="min-w-0"><span className="block font-bold group-hover:text-brand">{claim.workOrderNumber} · {claim.summary}</span><span className="block text-sm text-muted">{claim.company.name} · {claim.equipment.productModel} · Serial {claim.equipment.serialNumber}</span></span>
+                    {claim.warrantyClaimOn && <span className="text-sm text-muted">Against WIP {claim.warrantyClaimOn.workOrderNumber}</span>}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <QueueSection count={counts.mine} description="Open jobs handed to you or taken by you." href="/workspace/work-orders?assignee=me&open=1" title="With me">
           {mine.length
             ? <QueueList viewerId={viewer.id} workOrders={mine} />
