@@ -185,23 +185,27 @@ export async function updateServiceStage(formData: FormData): Promise<ActionResu
       serviceStageId: requiredText,
       customerFacingStatus: z.enum(["OPEN", "IN_PROGRESS", "WAITING", "COMPLETED"]),
       isActive: z.enum(["true", "false"]),
+      // The step customers see for this stage. Left as it is when the form doesn't send it.
+      customerLabel: z.string().trim().max(40).optional(),
     }).parse({
       serviceStageId: value(formData, "serviceStageId"),
       customerFacingStatus: value(formData, "customerFacingStatus"),
       isActive: value(formData, "isActive"),
+      customerLabel: formData.has("customerLabel") ? value(formData, "customerLabel") : undefined,
     });
     const reviewer = await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
     const isActive = input.isActive === "true";
     await prisma.$transaction(async (transaction) => {
       const stage = await transaction.serviceStage.findUnique({
         where: { id: input.serviceStageId },
-        select: { id: true, customerFacingStatus: true, isActive: true },
+        select: { id: true, customerFacingStatus: true, isActive: true, customerLabel: true },
       });
       if (!stage) throw new UserFacingError("Service stage not found.");
-      if (stage.customerFacingStatus === input.customerFacingStatus && stage.isActive === isActive) return;
+      const customerLabel = input.customerLabel === undefined ? stage.customerLabel : input.customerLabel || null;
+      if (stage.customerFacingStatus === input.customerFacingStatus && stage.isActive === isActive && stage.customerLabel === customerLabel) return;
       await transaction.serviceStage.update({
         where: { id: stage.id },
-        data: { customerFacingStatus: input.customerFacingStatus, isActive },
+        data: { customerFacingStatus: input.customerFacingStatus, isActive, customerLabel },
       });
       // Work orders store their customer status for fast filtering, so keep jobs already
       // in this stage in step with the new mapping. This is a configuration change, so
@@ -217,11 +221,12 @@ export async function updateServiceStage(formData: FormData): Promise<ActionResu
         eventType: "service-stage.updated",
         entityType: "ServiceStage",
         entityId: stage.id,
-        metadata: { previousCustomerFacingStatus: stage.customerFacingStatus, customerFacingStatus: input.customerFacingStatus, previousIsActive: stage.isActive, isActive, workOrdersUpdated: resynchronized.count },
+        metadata: { previousCustomerFacingStatus: stage.customerFacingStatus, customerFacingStatus: input.customerFacingStatus, previousIsActive: stage.isActive, isActive, previousCustomerLabel: stage.customerLabel, customerLabel, workOrdersUpdated: resynchronized.count },
       });
     });
     revalidatePath("/workspace/workflow");
     revalidatePath("/workspace/work-orders");
+    revalidatePath("/portal", "layout");
   });
 }
 

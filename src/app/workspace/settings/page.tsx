@@ -68,7 +68,7 @@ export default async function SettingsPage() {
 
       <div className="mt-8 grid gap-6">
         <SettingsSection
-          description="VacTech facilities that perform repairs. The code is the suffix on work order numbers, such as AZ in 48366 AZ."
+          description="VacTech facilities that perform repairs. The code is the suffix on work order numbers, such as AZ in 48366 AZ. The contact email and phone are shown to customers on their repairs."
           icon={<Building className="text-brand" size={20} />}
           title="Service centers"
         >
@@ -84,6 +84,9 @@ export default async function SettingsPage() {
                 <span className="text-sm text-muted">{center._count.workOrders} work order{center._count.workOrders === 1 ? "" : "s"}</span>
                 <label className="flex items-center gap-2 text-sm"><input className="size-4 accent-brand" defaultChecked={center.isActive} name="isActive" type="checkbox" /> Active</label>
                 <button className={buttonStyles({ variant: "outline", size: "sm" })}>Save</button>
+                {/* Shown to customers on their repairs as the place to ask questions. */}
+                <label className="grid gap-1 text-xs text-muted sm:col-span-2" htmlFor={`email-${center.id}`}>Customer contact email<input className={fieldStyles} defaultValue={center.contactEmail ?? ""} id={`email-${center.id}`} maxLength={254} name="contactEmail" placeholder="service@example.com" type="email" /></label>
+                <label className="grid gap-1 text-xs text-muted sm:col-span-3" htmlFor={`phone-${center.id}`}>Customer contact phone<input className={fieldStyles} defaultValue={center.contactPhone ?? ""} id={`phone-${center.id}`} maxLength={40} name="contactPhone" placeholder="(480) 555-0100" type="tel" /></label>
               </ActionFeedbackForm>
             ))}
             {!centers.length && <p className="py-3 text-sm text-muted">No service centers yet. Add the first one below.</p>}

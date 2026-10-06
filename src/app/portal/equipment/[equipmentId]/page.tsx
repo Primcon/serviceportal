@@ -1,46 +1,60 @@
 import Link from "next/link";
-import { ArrowLeft, BookOpen, ClipboardList, Package } from "lucide-react";
 import { notFound } from "next/navigation";
+import { ArrowLeft, BookOpen, ClipboardList, Package } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/ui/page-header";
+import { panelStyles } from "@/components/ui/styles";
 import { ModelDocumentList } from "@/features/catalog/components/model-document-list";
+import { customerStageLabel } from "@/features/customer/progress";
 import { getCustomerEquipment } from "@/features/work-orders/customer-queries";
-import { getRequestActor } from "@/services/request-actor";
 import { shopTimeZone } from "@/lib/dates";
+import { customerStatusLabels } from "@/lib/labels";
+import { getRequestActor } from "@/services/request-actor";
 
 export const dynamic = "force-dynamic";
 
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone }).format(date);
-}
+const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
 
 export default async function CustomerEquipmentPage({ params }: { params: Promise<{ equipmentId: string }> }) {
   const { equipmentId } = await params;
-  let equipment;
-  try {
-    const actor = await getRequestActor("customer");
-    equipment = actor ? await getCustomerEquipment(actor.identitySubject, equipmentId) : null;
-  } catch {
-    notFound();
-  }
+  const actor = await getRequestActor("customer");
+  const equipment = actor ? await getCustomerEquipment(actor.identitySubject, equipmentId).catch(() => null) : null;
   if (!equipment) notFound();
   const manuals = equipment.catalogModel?.documents ?? [];
 
   return (
-    <main className="min-h-screen bg-paper px-5 py-6 text-ink sm:px-10">
-      <div className="mx-auto max-w-5xl">
-        <Link href="/portal/equipment" className="flex w-fit items-center gap-2 text-sm font-bold text-brand"><ArrowLeft size={16} /> Equipment</Link>
-        <section className="border-b border-line py-9">
-          <div className="flex items-center gap-2 text-sm font-bold tracking-[0.1em] text-brand"><Package size={17} /> EQUIPMENT HISTORY</div>
-          <h1 className="mt-3 text-4xl font-bold">{equipment.productModel}</h1>
-          <p className="mt-3 text-muted">Serial {equipment.serialNumber} · {equipment.company.name}</p>
-          {equipment.description && <p className="mt-3 max-w-2xl leading-7 text-body">{equipment.description}</p>}
+    <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+      <Link className="flex w-fit items-center gap-2 text-sm font-bold text-brand" href="/portal/equipment"><ArrowLeft size={16} /> Equipment</Link>
+      <div className="mt-5">
+        <PageHeader description={<>Serial {equipment.serialNumber} · {equipment.company.name}{equipment.description && <span className="mt-1 block">{equipment.description}</span>}</>} eyebrow="EQUIPMENT" icon={<Package size={16} />} title={equipment.productModel} />
+      </div>
+
+      <div className={`mt-6 grid gap-6 ${manuals.length ? "lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start" : ""}`}>
+        <section className={panelStyles}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 text-lg font-bold"><ClipboardList className="text-brand" size={18} /> Service history</h2>
+            <p className="text-sm text-muted">{equipment.workOrders.length} repair{equipment.workOrders.length === 1 ? "" : "s"}</p>
+          </div>
+          {equipment.workOrders.length ? (
+            <ul className="mt-4 divide-y divide-line border-y border-line">
+              {equipment.workOrders.map((workOrder) => (
+                <li key={workOrder.id}>
+                  <Link className="group flex flex-wrap items-center justify-between gap-3 py-4" href={`/portal/work-orders/${workOrder.id}`}>
+                    <span className="min-w-0">
+                      <span className="block font-bold group-hover:text-brand">{workOrder.workOrderNumber} · {workOrder.summary}</span>
+                      <span className="block text-sm text-muted">{customerStageLabel(workOrder.serviceStage)} · Updated {day.format(workOrder.updatedAt)}</span>
+                    </span>
+                    <Badge tone={workOrder.customerFacingStatus === "COMPLETED" ? "success" : "brand"}>{customerStatusLabels[workOrder.customerFacingStatus]}</Badge>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="mt-3 text-sm text-muted">No repairs on record for this equipment yet.</p>}
         </section>
-        <section className="mt-8 border-y border-line">
-          <div className="flex items-center justify-between gap-3 border-b border-line py-4"><div className="flex items-center gap-2 font-bold"><ClipboardList size={18} className="text-brand" /> Service history</div><p className="text-sm text-muted">{equipment.workOrders.length} record{equipment.workOrders.length === 1 ? "" : "s"}</p></div>
-          {equipment.workOrders.length ? <div className="divide-y divide-line">{equipment.workOrders.map((workOrder) => <Link className="block py-5 hover:text-brand" href={`/portal/work-orders/${workOrder.id}`} key={workOrder.id}><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-bold">{workOrder.workOrderNumber} · {workOrder.summary}</p><p className="mt-2 text-sm text-muted">{workOrder.serviceStage.displayName}</p></div><div className="text-right"><span className="bg-brand-soft px-2 py-1 text-xs font-bold text-brand">{workOrder.customerFacingStatus.replace("_", " ")}</span><time className="mt-2 block text-xs text-muted">Updated {formatDate(workOrder.updatedAt)}</time></div></div></Link>)}</div> : <p className="py-8 text-sm text-muted">No service history is available for this equipment yet.</p>}
-        </section>
+
         {manuals.length > 0 && (
-          <section className="mt-8 border border-line p-6">
-            <h2 className="flex items-center gap-2 font-bold"><BookOpen className="text-brand" size={18} /> Manuals and documents</h2>
+          <section className={panelStyles}>
+            <h2 className="flex items-center gap-2 text-lg font-bold"><BookOpen className="text-brand" size={18} /> Manuals and documents</h2>
             <div className="mt-2"><ModelDocumentList documents={manuals} downloadPath="/api/model-documents" /></div>
           </section>
         )}

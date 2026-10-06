@@ -67,11 +67,16 @@ export async function saveServiceCenter(formData: FormData): Promise<ActionResul
       id: optionalId,
       code: z.string().trim().toUpperCase().regex(/^[A-Z]{2,4}$/, "Use 2 to 4 letters, such as AZ."),
       name: z.string().trim().min(1).max(80),
+      // Shown to customers on their repairs. Left as they are when the form doesn't send them.
+      contactEmail: z.string().trim().max(254).refine((email) => !email || z.string().email().safeParse(email).success, "Enter a valid email address.").optional(),
+      contactPhone: z.string().trim().max(40).optional(),
       isActive: z.boolean(),
     }).parse({
       id: value(formData, "id"),
       code: value(formData, "code"),
       name: value(formData, "name"),
+      contactEmail: formData.has("contactEmail") ? value(formData, "contactEmail") : undefined,
+      contactPhone: formData.has("contactPhone") ? value(formData, "contactPhone") : undefined,
       isActive: formData.get("isActive") === "on" || !formData.has("isActiveField"),
     });
     const actor = await getActiveInternalUserForRoles(managerRoles);
@@ -89,7 +94,13 @@ export async function saveServiceCenter(formData: FormData): Promise<ActionResul
           throw new UserFacingError("This center's code is already part of work order numbers, so it can't be changed. Rename it instead.");
         }
       }
-      const data = { code: input.code, name: input.name, isActive: input.isActive };
+      const data = {
+        code: input.code,
+        name: input.name,
+        isActive: input.isActive,
+        ...(input.contactEmail === undefined ? {} : { contactEmail: input.contactEmail || null }),
+        ...(input.contactPhone === undefined ? {} : { contactPhone: input.contactPhone || null }),
+      };
       const center = input.id
         ? await transaction.serviceCenter.update({ where: { id: input.id }, data })
         : await transaction.serviceCenter.create({ data });

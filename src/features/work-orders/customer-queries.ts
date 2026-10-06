@@ -5,6 +5,8 @@ import { customerEquipmentAccessWhere, customerWorkOrderAccessWhere } from "@/se
 export type CustomerWorkOrderFilters = {
   search?: string;
   status?: string;
+  /** Narrows the list to one of the customer's companies. Access rules still apply. */
+  companyId?: string;
   page?: number;
   pageSize?: number;
 };
@@ -46,6 +48,7 @@ export async function listCustomerWorkOrders(
       }] : []),
     ],
     ...(status ? { customerFacingStatus: status } : {}),
+    ...(filters.companyId ? { companyId: filters.companyId } : {}),
   };
 
   const [total, workOrders] = await Promise.all([
@@ -61,7 +64,10 @@ export async function listCustomerWorkOrders(
         equipment: {
           select: { productModel: true, serialNumber: true },
         },
-        serviceStage: { select: { displayName: true } },
+        condition: true,
+        promisedAt: true,
+        company: { select: { name: true } },
+        serviceStage: { select: { displayName: true, customerLabel: true, sequence: true } },
         updates: {
           where: { visibility: RecordVisibility.CUSTOMER_VISIBLE },
           orderBy: { createdAt: "desc" },
@@ -118,14 +124,20 @@ export async function getCustomerWorkOrder(
       receivedAt: true,
       company: { select: { name: true } },
       equipment: { select: { id: true, productModel: true, serialNumber: true } },
-      serviceStage: { select: { displayName: true, sequence: true } },
+      condition: true,
+      promisedAt: true,
+      completedAt: true,
+      customerPurchaseOrder: true,
+      rmaReference: true,
+      serviceCenter: { select: { name: true, contactEmail: true, contactPhone: true } },
+      serviceStage: { select: { displayName: true, customerLabel: true, sequence: true } },
+      // Used only to date the steps of the progress tracker; internal notes aren't selected.
       statusHistory: {
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: "asc" },
         select: {
           id: true,
-          condition: true,
           createdAt: true,
-          serviceStage: { select: { displayName: true } },
+          serviceStage: { select: { displayName: true, customerLabel: true, sequence: true } },
         },
       },
       updates: {
@@ -209,7 +221,7 @@ export async function getCustomerEquipment(
           summary: true,
           customerFacingStatus: true,
           updatedAt: true,
-          serviceStage: { select: { displayName: true } },
+          serviceStage: { select: { displayName: true, customerLabel: true } },
         },
       },
     },
@@ -311,4 +323,19 @@ export async function getCustomerAccount(identitySubject: string) {
   });
   if (!user?.isActive) return null;
   return user;
+}
+/** The companies a customer can see records for, for the company filter. Empty for an unknown or disabled user. */
+export async function listCustomerCompanies(identitySubject: string) {
+  const userId = await activeCustomerId(identitySubject);
+  if (!userId) return [];
+  return prisma.company.findMany({
+    where: { userAccess: { some: { userId, role: "CUSTOMER_USER" } } },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+}
+
+/** The workflow's stages as customers are shown them, for the progress tracker. */
+export function customerProgressStages() {
+  return prisma.serviceStage.findMany({ orderBy: { sequence: "asc" }, select: { sequence: true, displayName: true, customerLabel: true, isActive: true } });
 }

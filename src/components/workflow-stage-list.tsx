@@ -16,6 +16,7 @@ type Stage = {
   displayName: string;
   sequence: number;
   customerFacingStatus: "OPEN" | "IN_PROGRESS" | "WAITING" | "COMPLETED";
+  customerLabel: string | null;
   isActive: boolean;
 };
 
@@ -38,7 +39,7 @@ export default function WorkflowStageList({ stages }: { stages: Stage[] }) {
             </div>
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted">Customer sees</span>
-              <span className="font-bold">{customerStatusLabels[stage.customerFacingStatus]}</span>
+              <span className="font-bold">{stage.customerLabel || stage.displayName} · {customerStatusLabels[stage.customerFacingStatus]}</span>
             </div>
             <button className={buttonStyles({ variant: "outline", size: "sm" })} onClick={() => setSelectedStage(stage)} type="button"><Edit3 size={16} /> Edit</button>
           </article>
@@ -49,6 +50,9 @@ export default function WorkflowStageList({ stages }: { stages: Stage[] }) {
         <Modal eyebrow="WORKFLOW STAGE" title={selectedStage.displayName} description={`Sequence ${selectedStage.sequence} · ${selectedStage.code}`} onClose={() => setSelectedStage(null)} size="sm">
           <ActionFeedbackForm action={updateServiceStage} className="grid gap-4" successMessage="Workflow stage updated.">
             <input name="serviceStageId" type="hidden" value={selectedStage.id} />
+            <Field label="Step shown to customers" htmlFor={`${dialogId}-label`} hint="The name on the customer's progress tracker. Give neighbouring stages the same name to show them as one step. Leave blank to use the stage's own name.">
+              <input className={fieldStyles} defaultValue={selectedStage.customerLabel ?? ""} id={`${dialogId}-label`} maxLength={40} name="customerLabel" placeholder={selectedStage.displayName} />
+            </Field>
             <Field label="Customer-facing status" htmlFor={`${dialogId}-status`} hint="Work orders already in this stage switch to the new status. Customers aren't emailed about it.">
               <select className={fieldStyles} defaultValue={selectedStage.customerFacingStatus} id={`${dialogId}-status`} name="customerFacingStatus">
                 {Object.entries(customerStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}

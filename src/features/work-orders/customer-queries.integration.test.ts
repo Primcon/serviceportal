@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CustomerFacingStatus, PrismaClient, RecordVisibility, UserRole, WorkOrderCondition } from "@prisma/client";
-import { getCustomerEquipment, getCustomerWorkOrder, listCustomerEquipment, listCustomerWorkOrders } from "./customer-queries";
+import { getCustomerEquipment, getCustomerWorkOrder, listCustomerCompanies, listCustomerEquipment, listCustomerWorkOrders } from "./customer-queries";
 import { logCustomerNotification } from "@/services/notifications";
 
 const prisma = new PrismaClient();
@@ -118,6 +118,21 @@ describe("customer query authorization", () => {
     expect(ownWorkOrders.workOrders.map((workOrder) => workOrder.id)).toEqual([workOrderId]);
     const ownEquipment = await listCustomerEquipment(customerIdentitySubject, "visible");
     expect(ownEquipment.equipment.map((item) => item.id)).toEqual([equipmentId]);
+  });
+
+  it("can't use the company filter to reach another customer's repairs", async () => {
+    const other = await listCustomerWorkOrders(customerIdentitySubject, { companyId: otherCompanyId });
+    expect(other).toMatchObject({ workOrders: [], total: 0 });
+    const own = await listCustomerWorkOrders(customerIdentitySubject, { companyId });
+    expect(own.workOrders.map((workOrder) => workOrder.id)).toEqual([workOrderId]);
+    expect((await listCustomerCompanies(customerIdentitySubject)).map((company) => company.id)).toEqual([companyId]);
+    expect(await listCustomerCompanies("nobody")).toEqual([]);
+  });
+
+  it("gives customers the customer step name, not the internal stage", async () => {
+    const workOrder = await getCustomerWorkOrder(customerIdentitySubject, workOrderId);
+    expect(workOrder?.serviceStage).toMatchObject({ customerLabel: "Received" });
+    expect(workOrder?.statusHistory.every((entry) => !("note" in entry) && !("condition" in entry))).toBe(true);
   });
 
   it("rejects equipment and work orders at other locations in the same company", async () => {
