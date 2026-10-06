@@ -20,7 +20,7 @@ The portal has four staff roles and one customer role. Each staff role includes 
 | Archive or merge pumps | Yes | Yes | No | No |
 | Model catalog: add, correct, retire, merge; upload manuals | Yes | Yes | No | No |
 | Users, access requests and customer access | Yes | Yes | No | No |
-| Workflow stages, settings, reports, audit log | Yes | Yes | No | No |
+| Workflow stages, settings, reports, audit log, operations dashboard | Yes | Yes | No | No |
 | Change or disable an administrator | Yes | No | No | No |
 
 **Customers** see only customer-visible records for the companies or locations they've been granted, and can't change anything except their own notification preferences.

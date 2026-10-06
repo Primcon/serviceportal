@@ -111,42 +111,6 @@ export async function getInternalEquipment(equipmentId: string) {
   });
 }
 
-export async function listInternalAuditEvents(search = "", page = 1) {
-  await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
-  const term = search.trim();
-  const where: Prisma.AuditEventWhereInput | undefined = term ? {
-    OR: [
-      { eventType: { contains: term, mode: "insensitive" } },
-      { entityType: { contains: term, mode: "insensitive" } },
-      { entityId: { contains: term, mode: "insensitive" } },
-      { actorUser: { displayName: { contains: term, mode: "insensitive" } } },
-    ],
-  } : undefined;
-  const pageSize = 50;
-  const currentPage = Math.max(1, Math.floor(page));
-
-  const [events, total] = await Promise.all([
-    prisma.auditEvent.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (currentPage - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true,
-        eventType: true,
-        entityType: true,
-        entityId: true,
-        customerVisible: true,
-        createdAt: true,
-        actorUser: { select: { displayName: true } },
-        workOrder: { select: { workOrderNumber: true, summary: true } },
-      },
-    }),
-    prisma.auditEvent.count({ where }),
-  ]);
-  return { events, total, page: currentPage, pageSize };
-}
-
 export async function listInternalUsers(filters: { search?: string; status?: string; role?: string; page?: number; pageSize?: number } = {}) {
   await getActiveInternalUserForRoles([UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER]);
   const search = filters.search?.trim() ?? "";
