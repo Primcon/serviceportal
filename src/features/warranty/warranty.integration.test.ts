@@ -156,10 +156,13 @@ describe("a warranty claim", () => {
     // A manager's role isn't enough: only the named approvers decide.
     as(UserRole.VACTECH_MANAGER);
     await expect(decideWarrantyClaim(form({ workOrderId: second.id, decision: "APPROVED", note: "" }))).resolves.toEqual({ status: "error", message: "Only a warranty approver can decide a warranty claim." });
-    // Approvers are named in Users. (The development sign-in has no stored staff role, so it's flagged directly.)
+    // Approvers are named in Users, and only staff can be named.
     await expect(setWarrantyApprover(form({ userId: approverId, canApprove: "false" }))).resolves.toEqual({ status: "success", message: "This person can no longer decide warranty claims." });
     await expect(setWarrantyApprover(form({ userId: approverId, canApprove: "true" }))).resolves.toEqual({ status: "success", message: "This person can now decide warranty claims." });
-    await expect(setWarrantyApprover(form({ userId: meId, canApprove: "true" }))).resolves.toEqual({ status: "error", message: "Only staff can approve warranty claims." });
+    const customer = await prisma.user.create({ data: { identitySubject: `warranty:customer:${suffix}`, email: `warranty-customer-${suffix}@test.invalid`, displayName: "Customer" } });
+    await expect(setWarrantyApprover(form({ userId: customer.id, canApprove: "true" }))).resolves.toEqual({ status: "error", message: "Only staff can approve warranty claims." });
+    await prisma.user.delete({ where: { id: customer.id } });
+    // The development sign-in may have no stored staff role, so it's flagged directly.
     await prisma.user.update({ where: { id: meId }, data: { canApproveWarranty: true } });
     as(UserRole.VACTECH_SERVICE_USER);
 
