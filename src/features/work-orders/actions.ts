@@ -11,6 +11,7 @@ import { findOrCreateProductModel, modelDisplayName } from "@/features/work-orde
 import { setWorkOrderAssignee } from "@/features/assignments/assign";
 import { notifyDocumentShared } from "@/features/work-orders/document-notification";
 import { unsignedStepsBefore } from "@/features/checklists/checklist";
+import { shippingDefaults } from "@/features/warranty/queries";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
 import { detectDocumentType, supportedDocumentDescription } from "@/services/file-types";
@@ -225,6 +226,8 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
         }
       }
       const isCompleted = stage.code === "COMPLETED";
+      // Reaching Shipped records today as the ship date and starts the warranty, unless a ship date was already entered.
+      const shipping = stage.code === "SHIPPED" && workOrder.serviceStageId !== stage.id && input.condition !== "CANCELLED" ? await shippingDefaults(transaction, workOrder.id) : null;
       // A finished or cancelled job isn't anyone's work any more.
       const nextAssigneeId = isCompleted || input.condition === "CANCELLED" ? null : input.handoff === "keep" ? workOrder.assignedToId : input.handoff || null;
       const stateChanged = workOrder.serviceStageId !== stage.id || workOrder.condition !== input.condition;
@@ -242,8 +245,12 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
           condition: input.condition,
           completedAt: isCompleted ? workOrder.completedAt ?? new Date() : null,
           ...(workOrder.serviceStageId !== stage.id ? { stageEnteredAt: new Date() } : {}),
+          ...(shipping ?? {}),
         },
       });
+      if (shipping) {
+        await recordAudit(transaction, { workOrderId: input.workOrderId, actorUserId: internalUser.id, eventType: "work-order.shipping-updated", entityType: "WorkOrder", entityId: input.workOrderId, metadata: { shippedAt: { from: null, to: shipping.shippedAt.toISOString() }, warrantyMonths: shipping.warrantyMonths, warrantyEndsAt: shipping.warrantyEndsAt?.toISOString() ?? null } });
+      }
       if (nextAssigneeId !== workOrder.assignedToId) {
         // The note is already on the stage change, so the handoff record doesn't repeat it.
         await setWorkOrderAssignee(transaction, { workOrderId: input.workOrderId, assigneeId: nextAssigneeId, actorUserId: internalUser.id, note: null });

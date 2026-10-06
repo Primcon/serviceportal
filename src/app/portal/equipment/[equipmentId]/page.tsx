@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BookOpen, ClipboardList, Package } from "lucide-react";
+import { ArrowLeft, BookOpen, ClipboardList, Package, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { panelStyles } from "@/components/ui/styles";
@@ -9,11 +9,13 @@ import { customerStageLabel } from "@/features/customer/progress";
 import { getCustomerEquipment } from "@/features/work-orders/customer-queries";
 import { shopTimeZone } from "@/lib/dates";
 import { customerStatusLabels } from "@/lib/labels";
+import { warrantyState } from "@/features/warranty/warranty";
 import { getRequestActor } from "@/services/request-actor";
 
 export const dynamic = "force-dynamic";
 
 const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
+const calendarDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
 export default async function CustomerEquipmentPage({ params }: { params: Promise<{ equipmentId: string }> }) {
   const { equipmentId } = await params;
@@ -28,6 +30,10 @@ export default async function CustomerEquipmentPage({ params }: { params: Promis
       <div className="mt-5">
         <PageHeader description={<>Serial {equipment.serialNumber} · {equipment.company.name}{equipment.description && <span className="mt-1 block">{equipment.description}</span>}</>} eyebrow="EQUIPMENT" icon={<Package size={16} />} title={equipment.productModel} />
       </div>
+
+      {equipment.warrantyEndsAt && warrantyState(equipment.warrantyEndsAt) === "active" && (
+        <p className="mt-6 flex items-center gap-2 border-l-4 border-brand bg-paper px-4 py-3 text-sm"><ShieldCheck className="shrink-0 text-brand" size={17} /> <span>The last repair on this equipment is under warranty until <span className="font-bold">{calendarDay.format(equipment.warrantyEndsAt)}</span>.</span></p>
+      )}
 
       <div className={`mt-6 grid gap-6 ${manuals.length ? "lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start" : ""}`}>
         <section className={panelStyles}>

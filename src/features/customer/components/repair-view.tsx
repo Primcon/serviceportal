@@ -9,6 +9,7 @@ import { customerConditionNotices, customerStageLabel, progressSteps } from "@/f
 import type { CustomerWorkOrder } from "@/features/work-orders/customer-queries";
 import { shopTimeZone } from "@/lib/dates";
 import { customerStatusLabels, documentTypeLabels } from "@/lib/labels";
+import { warrantyState } from "@/features/warranty/warranty";
 
 const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
 const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: shopTimeZone });
@@ -53,8 +54,8 @@ export function RepairView({ workOrder, stages, preview = false }: { workOrder: 
   const contact = workOrder.serviceCenter;
   const facts: [string, ReactNode][] = [
     ["Received", workOrder.receivedAt && day.format(workOrder.receivedAt)],
-    ["Expected by", !workOrder.completedAt && workOrder.promisedAt && calendarDay.format(workOrder.promisedAt)],
     ["Completed", workOrder.completedAt && day.format(workOrder.completedAt)],
+    ["Warranty", workOrder.warrantyEndsAt && (warrantyState(workOrder.warrantyEndsAt) === "active" ? `Covered until ${calendarDay.format(workOrder.warrantyEndsAt)}` : `Ended ${calendarDay.format(workOrder.warrantyEndsAt)}`)],
     ["Your PO", workOrder.customerPurchaseOrder],
     ["RMA", workOrder.rmaReference],
     ["Company", workOrder.company.name],

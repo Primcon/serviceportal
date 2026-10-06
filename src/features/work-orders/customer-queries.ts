@@ -1,6 +1,7 @@
 import { CustomerFacingStatus, Prisma, RecordVisibility } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { customerEquipmentAccessWhere, customerWorkOrderAccessWhere } from "@/services/authorization-policy";
+import { customerWarrantyVisible } from "@/features/warranty/queries";
 
 export type CustomerWorkOrderFilters = {
   search?: string;
@@ -65,7 +66,6 @@ export async function listCustomerWorkOrders(
           select: { productModel: true, serialNumber: true },
         },
         condition: true,
-        promisedAt: true,
         company: { select: { name: true } },
         serviceStage: { select: { displayName: true, customerLabel: true, sequence: true } },
         updates: {
@@ -111,8 +111,10 @@ const customerWorkOrderSelect = {
   company: { select: { name: true } },
   equipment: { select: { id: true, productModel: true, serialNumber: true } },
   condition: true,
-  promisedAt: true,
+  // The promised date is the shop's internal target, so it isn't selected for customers.
   completedAt: true,
+  // Blanked below unless customers are shown warranty dates.
+  warrantyEndsAt: true,
   customerPurchaseOrder: true,
   rmaReference: true,
   serviceCenter: { select: { name: true, contactEmail: true, contactPhone: true } },
@@ -164,6 +166,12 @@ const customerWorkOrderSelect = {
 
 export type CustomerWorkOrder = Prisma.WorkOrderGetPayload<{ select: typeof customerWorkOrderSelect }>;
 
+/** Blanks the warranty date unless the portal is set to show customers warranty dates. */
+async function applyWarrantyRule<T extends { warrantyEndsAt: Date | null }>(workOrder: T | null) {
+  if (!workOrder?.warrantyEndsAt) return workOrder;
+  return (await customerWarrantyVisible()) ? workOrder : { ...workOrder, warrantyEndsAt: null };
+}
+
 export async function getCustomerWorkOrder(
   identitySubject: string,
   workOrderId: string,
@@ -177,13 +185,13 @@ export async function getCustomerWorkOrder(
     return null;
   }
 
-  return prisma.workOrder.findFirst({
+  return applyWarrantyRule(await prisma.workOrder.findFirst({
     where: {
       id: workOrderId,
       ...customerWorkOrderAccessWhere(user.id),
     },
     select: customerWorkOrderSelect,
-  });
+  }));
 }
 
 export async function getCustomerEquipment(
@@ -199,7 +207,7 @@ export async function getCustomerEquipment(
     return null;
   }
 
-  return prisma.equipment.findFirst({
+  const equipment = await prisma.equipment.findFirst({
     where: {
       id: equipmentId,
       // A duplicate that was merged away isn't shown; its history is on the pump it was merged into.
@@ -229,11 +237,17 @@ export async function getCustomerEquipment(
           summary: true,
           customerFacingStatus: true,
           updatedAt: true,
+          warrantyEndsAt: true,
           serviceStage: { select: { displayName: true, customerLabel: true } },
         },
       },
     },
   });
+  if (!equipment) return null;
+  const showWarranty = await customerWarrantyVisible();
+  // The pump's current cover is the latest end date among its repairs.
+  const warrantyEndsAt = showWarranty ? equipment.workOrders.reduce<Date | null>((latest, workOrder) => (workOrder.warrantyEndsAt && (!latest || workOrder.warrantyEndsAt > latest) ? workOrder.warrantyEndsAt : latest), null) : null;
+  return { ...equipment, warrantyEndsAt };
 }
 
 export async function listCustomerEquipment(identitySubject: string, search = "", { page = 1, pageSize = 20 } = {}) {
@@ -354,6 +368,6 @@ export function customerProgressStages() {
  * selection, so what staff see here is exactly what the customer would. The caller checks
  * that the viewer is staff.
  */
-export function getWorkOrderAsCustomerSeesIt(workOrderId: string) {
-  return prisma.workOrder.findUnique({ where: { id: workOrderId }, select: customerWorkOrderSelect });
+export async function getWorkOrderAsCustomerSeesIt(workOrderId: string) {
+  return applyWarrantyRule(await prisma.workOrder.findUnique({ where: { id: workOrderId }, select: customerWorkOrderSelect }));
 }

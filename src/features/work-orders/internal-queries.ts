@@ -16,6 +16,10 @@ export async function getInternalWorkOrder(workOrderId: string) {
       createdBy: { select: { displayName: true } },
       assignedTo: { select: { id: true, displayName: true } },
       partsReceivedBy: { select: { displayName: true } },
+      warrantyClaimOn: { select: { id: true, workOrderNumber: true, shippedAt: true, warrantyEndsAt: true } },
+      warrantyDecidedBy: { select: { displayName: true } },
+      // Later jobs claimed against this repair's warranty.
+      warrantyClaims: { orderBy: { createdAt: "desc" }, select: { id: true, workOrderNumber: true, warrantyDecision: true } },
       assignments: {
         orderBy: { createdAt: "desc" },
         include: { assignedTo: { select: { displayName: true } }, assignedBy: { select: { displayName: true } } },
@@ -104,6 +108,8 @@ export async function getInternalEquipment(equipmentId: string) {
           receivedAt: true,
           completedAt: true,
           updatedAt: true,
+          warrantyEndsAt: true,
+          warrantyDecision: true,
           serviceStage: { select: { displayName: true } },
         },
       },
@@ -138,6 +144,7 @@ export async function listInternalUsers(filters: { search?: string; status?: str
       email: true,
       isActive: true,
       internalRole: true,
+      canApproveWarranty: true,
       access: {
         select: { id: true, role: true, scope: true, company: { select: { name: true } }, location: { select: { name: true } } },
       },

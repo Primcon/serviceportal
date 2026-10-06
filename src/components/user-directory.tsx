@@ -9,9 +9,10 @@ import { Field } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
 import { grantUserAccess, revokeUserAccess, updateInternalUserRole, updateUserActiveStatus, resetSignInLink } from "@/features/admin/actions";
+import { setWarrantyApprover } from "@/features/warranty/actions";
 import { roleLabels } from "@/lib/labels";
 
-type User = { id: string; displayName: string; email: string; isActive: boolean; internalRole: UserRole | null; access: { id: string; role: string; scope: string; company: { name: string }; location: { name: string } | null }[] };
+type User = { id: string; displayName: string; email: string; isActive: boolean; internalRole: UserRole | null; canApproveWarranty: boolean; access: { id: string; role: string; scope: string; company: { name: string }; location: { name: string } | null }[] };
 type Company = { id: string; name: string; locations: { id: string; name: string }[] };
 
 export default function UserDirectory({ users, companies }: { users: User[]; companies: Company[] }) {
@@ -30,6 +31,7 @@ export default function UserDirectory({ users, companies }: { users: User[]; com
                 <h3 className="font-bold">{user.displayName}</h3>
                 <Badge tone={user.isActive ? "brand" : "neutral"}>{user.isActive ? "Active" : "Disabled"}</Badge>
                 {user.internalRole && <Badge tone="outline">{roleLabels[user.internalRole]}</Badge>}
+                {user.canApproveWarranty && <Badge tone="outline">Warranty approver</Badge>}
               </div>
               <p className="mt-1 text-sm text-muted">{user.email}</p>
             </div>
@@ -71,6 +73,15 @@ export default function UserDirectory({ users, companies }: { users: User[]; com
                     </select>
                   </Field>
                   <button className={buttonStyles({ variant: "secondary", className: "w-fit" })}>Update role</button>
+                </ActionFeedbackForm>
+              )}
+              {selectedUser.internalRole && (
+                <ActionFeedbackForm action={setWarrantyApprover} className="mt-6 grid gap-2 border-t border-line pt-5">
+                  <input name="userId" type="hidden" value={selectedUser.id} />
+                  <input name="canApprove" type="hidden" value={selectedUser.canApproveWarranty ? "false" : "true"} />
+                  <p className="text-sm font-bold">Warranty claims</p>
+                  <p className="text-sm text-muted">{selectedUser.canApproveWarranty ? "This person decides warranty claims and is emailed when one is opened." : "Warranty claims are decided by named approvers, whatever their role."}</p>
+                  <button className={buttonStyles({ variant: "outline", size: "sm", className: "w-fit" })}>{selectedUser.canApproveWarranty ? "Remove as warranty approver" : "Make a warranty approver"}</button>
                 </ActionFeedbackForm>
               )}
             </section>

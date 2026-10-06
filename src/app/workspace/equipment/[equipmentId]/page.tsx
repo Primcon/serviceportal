@@ -11,12 +11,14 @@ import { modelDocuments, productModelOptions } from "@/features/catalog/queries"
 import { EquipmentTools } from "@/features/records/components/equipment-tools";
 import { getInternalEquipment } from "@/features/work-orders/internal-queries";
 import { customerStatusLabels, formatEnumLabel } from "@/lib/labels";
+import { warrantyState } from "@/features/warranty/warranty";
 import { requireWorkspaceUser } from "@/services/page-access";
 import { shopTimeZone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
 const dateOnly = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
+const calendarDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
 export default async function InternalEquipmentPage({ params }: { params: Promise<{ equipmentId: string }> }) {
   const viewer = await requireWorkspaceUser();
@@ -81,7 +83,11 @@ export default async function InternalEquipmentPage({ params }: { params: Promis
                         {workOrder.completedAt && ` · Completed ${dateOnly.format(workOrder.completedAt)}`}
                       </p>
                     </div>
-                    <Badge tone={workOrder.customerFacingStatus === "COMPLETED" ? "success" : "brand"}>{customerStatusLabels[workOrder.customerFacingStatus]}</Badge>
+                    <span className="flex flex-wrap items-center gap-2">
+                      {workOrder.warrantyDecision && <Badge tone="outline">Warranty claim</Badge>}
+                      {workOrder.warrantyEndsAt && warrantyState(workOrder.warrantyEndsAt) === "active" && <Badge tone="success">In warranty until {calendarDay.format(workOrder.warrantyEndsAt)}</Badge>}
+                      <Badge tone={workOrder.customerFacingStatus === "COMPLETED" ? "success" : "brand"}>{customerStatusLabels[workOrder.customerFacingStatus]}</Badge>
+                    </span>
                   </Link>
                 </li>
               ))}

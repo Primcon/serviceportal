@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UserRole } from "@prisma/client";
-import { ArrowLeft, BookOpen, Download, Package, Upload } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, Package, ShieldCheck, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { buttonStyles, panelStyles } from "@/components/ui/styles";
 import { formatFileSize } from "@/features/catalog/components/model-document-list";
 import { ModelDocumentTools, ModelDocumentUpload, ModelTools } from "@/features/catalog/components/model-tools";
 import { getProductModel, productModelOptions } from "@/features/catalog/queries";
+import { WarrantyMonthsButton } from "@/features/warranty/components/warranty-tools";
+import { warrantyLengthLabel } from "@/features/warranty/warranty";
 import { modelDisplayName } from "@/features/work-orders/intake";
 import { documentTypeLabels } from "@/lib/labels";
 import { requireWorkspaceUser } from "@/services/page-access";
@@ -43,6 +45,14 @@ export default async function ModelPage({ params }: { params: Promise<{ modelId:
           title={modelDisplayName(model.manufacturer, model.name)}
         />
       </div>
+
+      <section className={`${panelStyles} mt-6 flex flex-wrap items-center justify-between gap-3`}>
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-bold"><ShieldCheck className="text-brand" size={18} /> Standard repair warranty</h2>
+          <p className="mt-1 text-sm text-muted">{model.warrantyMonths ? <><span className="font-bold text-ink">{warrantyLengthLabel(model.warrantyMonths)}</span> from the ship date, unless the customer&apos;s contract sets another length.</> : "Not set. Repairs of this model get no warranty unless the customer has contract terms or one is entered on the work order."}</p>
+        </div>
+        {canManage && <WarrantyMonthsButton kind="model" months={model.warrantyMonths} recordId={model.id} />}
+      </section>
 
       <div className={`mt-6 grid gap-6 ${canManage ? "lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start" : ""}`}>
         <section className={panelStyles}>

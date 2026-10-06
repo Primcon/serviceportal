@@ -1,5 +1,5 @@
 import { ListKind } from "@prisma/client";
-import { Building, Flag, Hash, Plus, Settings, Wrench } from "lucide-react";
+import { Building, Flag, Hash, Plus, Settings, ShieldCheck, Wrench } from "lucide-react";
 import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { PageHeader } from "@/components/ui/page-header";
@@ -7,6 +7,8 @@ import { buttonStyles, fieldStyles, panelStyles } from "@/components/ui/styles";
 import { managerRoles } from "@/features/navigation/workspace-items";
 import { saveListOption, saveNextWorkOrderNumber, saveServiceCenter } from "@/features/settings/actions";
 import { listOptions, serviceCenters, workOrderNumbering } from "@/features/settings/queries";
+import { saveCustomerWarrantyVisibility } from "@/features/warranty/actions";
+import { customerWarrantyVisible, warrantyApprovers } from "@/features/warranty/queries";
 import { requireWorkspaceUser } from "@/services/page-access";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +57,7 @@ async function PicklistSection({ kind, title, description, icon }: { kind: ListK
 
 export default async function SettingsPage() {
   await requireWorkspaceUser(managerRoles);
-  const [centers, numbering] = await Promise.all([serviceCenters({ includeInactive: true }), workOrderNumbering()]);
+  const [centers, numbering, customersSeeWarranty, approvers] = await Promise.all([serviceCenters({ includeInactive: true }), workOrderNumbering(), customerWarrantyVisible(), warrantyApprovers()]);
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
@@ -68,7 +70,7 @@ export default async function SettingsPage() {
 
       <div className="mt-8 grid gap-6">
         <SettingsSection
-          description="VacTech facilities that perform repairs. The code is the suffix on work order numbers, such as AZ in 48366 AZ. The contact email and phone are shown to customers on their repairs."
+          description="VacTech facilities that perform repairs. Each work order records the center doing the work. The contact email and phone are shown to customers on their repairs."
           icon={<Building className="text-brand" size={20} />}
           title="Service centers"
         >
@@ -107,6 +109,18 @@ export default async function SettingsPage() {
             <label className="grid gap-1.5 text-sm font-bold" htmlFor="next-wip">Next WIP number<input className={fieldStyles} defaultValue={numbering.next} id="next-wip" key={numbering.next} min={numbering.highest + 1} name="nextNumber" required type="number" /></label>
             <button className={buttonStyles({ variant: "outline", size: "sm", className: "h-[42px]" })}>Save</button>
             <p className="text-sm text-muted">{numbering.highest ? `Highest used so far: ${numbering.highest}.` : "No work orders yet."}</p>
+          </ActionFeedbackForm>
+        </SettingsSection>
+
+        <SettingsSection
+          description="A repair's warranty runs from its ship date. Its length comes from the customer's contract if they have one, otherwise from the pump model's standard warranty; set those on the customer's and the model's pages."
+          icon={<ShieldCheck className="text-brand" size={20} />}
+          title="Warranty"
+        >
+          <p className="text-sm"><span className="font-bold">Claims are decided by:</span> {approvers.length ? approvers.map((approver) => approver.displayName).join(", ") : <span className="text-danger">nobody yet</span>}. <a className="font-bold text-brand" href="/workspace/users">Choose approvers in Users</a></p>
+          <ActionFeedbackForm action={saveCustomerWarrantyVisibility} className="mt-4 flex flex-wrap items-center gap-4 border-t border-line pt-4" key={String(customersSeeWarranty)}>
+            <label className="flex items-start gap-2 text-sm"><input className="mt-0.5 size-4 accent-brand" defaultChecked={customersSeeWarranty} name="visible" type="checkbox" /><span><span className="font-bold">Show customers their warranty dates</span><span className="block text-muted">When on, customers see &ldquo;Covered until&rdquo; on shipped repairs and on their equipment. Claims and decisions always stay internal.</span></span></label>
+            <button className={buttonStyles({ variant: "outline", size: "sm" })}>Save</button>
           </ActionFeedbackForm>
         </SettingsSection>
 

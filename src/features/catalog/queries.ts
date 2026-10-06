@@ -31,6 +31,7 @@ export function getProductModel(modelId: string) {
       id: true,
       manufacturer: true,
       name: true,
+      warrantyMonths: true,
       isActive: true,
       documents: { orderBy: [{ documentType: "asc" }, { title: "asc" }], select: documentSelect },
       _count: { select: { equipment: { where: { mergedIntoId: null } } } },

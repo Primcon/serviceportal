@@ -55,10 +55,10 @@ afterAll(async () => {
 });
 
 describe("opening a work order at intake", () => {
-  it("opens one for a pump in the register, numbering it and adding the service center suffix and intake details", async () => {
+  it("opens one for a pump in the register, numbering it without a suffix and adding the intake details", async () => {
     const id = await openAndGetId({ pumpMode: "existing", equipmentId, serviceCenterId: centerId, summary: "Pump rebuild", priority: "Rush", toolId: "ETCH-07", contaminants: "N2", copperClassification: "NON_COPPER", customerContactName: "Mike" });
     const workOrder = await prisma.workOrder.findUniqueOrThrow({ where: { id }, include: { statusHistory: true } });
-    expect(workOrder.workOrderNumber).toMatch(new RegExp(`^\\d+ ${code}$`));
+    expect(workOrder.workOrderNumber).toMatch(/^\d+$/);
     expect(workOrder).toMatchObject({ companyId, equipmentId, serviceCenterId: centerId, summary: "Pump rebuild", priority: "Rush", toolId: "ETCH-07", contaminants: "N2", copperClassification: "NON_COPPER", customerContactName: "Mike" });
     expect(workOrder.statusHistory).toHaveLength(1);
     expect(workOrder.receivedAt).not.toBeNull();

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UserRole } from "@prisma/client";
-import { Archive, ArrowLeft, ArrowUpRight, Building2, ClipboardList, Combine, MapPin, Package, UsersRound } from "lucide-react";
+import { Archive, ArrowLeft, ArrowUpRight, Building2, ClipboardList, Combine, MapPin, Package, ShieldCheck, UsersRound } from "lucide-react";
 import EquipmentCreateForm from "@/components/equipment-create-form";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
@@ -10,6 +10,8 @@ import { productModelOptions } from "@/features/catalog/queries";
 import { managerRoles } from "@/features/navigation/workspace-items";
 import { AddLocationButton, CustomerTools, InviteCustomerButton, LocationTools } from "@/features/records/components/customer-tools";
 import { openWorkOrderWhere } from "@/features/records/merge";
+import { WarrantyMonthsButton } from "@/features/warranty/components/warranty-tools";
+import { warrantyLengthLabel } from "@/features/warranty/warranty";
 import { customerStatusLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 import { isPlaceholderIdentity } from "@/services/identity-linking";
@@ -32,6 +34,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ compa
     select: {
       id: true,
       name: true,
+      contractWarrantyMonths: true,
       archivedAt: true,
       mergedInto: { select: { id: true, name: true } },
       mergedFrom: { orderBy: { name: "asc" }, select: { id: true, name: true } },
@@ -101,6 +104,16 @@ export default async function CustomerPage({ params }: { params: Promise<{ compa
           </Link>
         ))}
       </section>
+
+      {!isMerged && (
+        <section className={`${panelStyles} mt-6 flex flex-wrap items-center justify-between gap-3`}>
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold"><ShieldCheck className="text-brand" size={18} /> Contract warranty</h2>
+            <p className="mt-1 text-sm text-muted">{company.contractWarrantyMonths ? <><span className="font-bold text-ink">{warrantyLengthLabel(company.contractWarrantyMonths)}</span> from the ship date on every repair, in place of each model&apos;s standard warranty.</> : "No contract terms. This customer's repairs get each model's standard warranty."}</p>
+          </div>
+          <WarrantyMonthsButton kind="contract" months={company.contractWarrantyMonths} recordId={company.id} />
+        </section>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
         <section className={panelStyles}>
