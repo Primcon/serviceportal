@@ -10,6 +10,8 @@ import { ModelDocumentList } from "@/features/catalog/components/model-document-
 import { modelDocuments, productModelOptions } from "@/features/catalog/queries";
 import { EquipmentTools } from "@/features/records/components/equipment-tools";
 import { getInternalEquipment } from "@/features/work-orders/internal-queries";
+import { pumpsWithSerialElsewhere } from "@/features/work-orders/pump-search";
+import { prisma } from "@/lib/prisma";
 import { customerStatusLabels, formatEnumLabel } from "@/lib/labels";
 import { warrantyState } from "@/features/warranty/warranty";
 import { requireWorkspaceUser } from "@/services/page-access";
@@ -25,7 +27,7 @@ export default async function InternalEquipmentPage({ params }: { params: Promis
   const { equipmentId } = await params;
   const equipment = await getInternalEquipment(equipmentId).catch(() => null);
   if (!equipment) notFound();
-  const [models, documents] = await Promise.all([productModelOptions(), modelDocuments(equipment.productModelId)]);
+  const [models, documents, sameSerial] = await Promise.all([productModelOptions(), modelDocuments(equipment.productModelId), pumpsWithSerialElsewhere(prisma, equipment.companyId, equipment.serialNumber)]);
   const canManage = viewer.internalRole === UserRole.PORTAL_ADMINISTRATOR || viewer.internalRole === UserRole.VACTECH_MANAGER;
   const isMerged = Boolean(equipment.mergedInto);
 
@@ -114,6 +116,13 @@ export default async function InternalEquipmentPage({ params }: { params: Promis
                 </div>
               ))}
             </dl>
+            {sameSerial.length > 0 && (
+              <p className="mt-4 border-t border-line pt-4 text-sm text-muted">
+                The same serial number is also on record at {sameSerial.map((pump, index) => (
+                  <span key={pump.id}>{index > 0 && ", "}<Link className="font-bold text-ink hover:text-brand" href={`/workspace/equipment/${pump.id}`}>{pump.company.name}</Link></span>
+                ))}. It may have changed hands, or one of them is a typo.
+              </p>
+            )}
             {equipment.mergedFrom.length > 0 && (
               <p className="mt-4 border-t border-line pt-4 text-sm text-muted">
                 Includes the history of {equipment.mergedFrom.length === 1 ? "a duplicate record" : "duplicate records"} merged into this one: {equipment.mergedFrom.map((duplicate, index) => (

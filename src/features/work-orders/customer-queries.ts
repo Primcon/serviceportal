@@ -290,7 +290,7 @@ export async function listCustomerEquipment(identitySubject: string, search = ""
 
 /** The notifications a customer sees in their feed: about repairs they can still see, newest first. */
 function customerFeedWhere(userId: string): Prisma.NotificationWhereInput {
-  return { userId, kind: { not: "ACCESS" }, workOrder: customerWorkOrderAccessWhere(userId) };
+  return { userId, kind: { notIn: ["ACCESS", "STAFF"] }, workOrder: customerWorkOrderAccessWhere(userId) };
 }
 
 export async function listCustomerNotifications(identitySubject: string, { page = 1, pageSize = 25 } = {}) {

@@ -13,7 +13,7 @@ import { maxWarrantyMonths, shopToday, warrantyEndDate, warrantyLengthLabel } fr
 import { optionalDate } from "@/features/work-orders/details-schema";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
-import { queueAccessEmail } from "@/services/notifications";
+import { notifyStaff } from "@/services/notifications";
 
 function value(formData: FormData, name: string) {
   return formData.get(name)?.toString() ?? "";
@@ -116,9 +116,10 @@ export async function openWarrantyClaim(formData: FormData): Promise<ActionResul
       });
       for (const approver of await warrantyApprovers(transaction)) {
         if (approver.id === user.id) continue;
-        await queueAccessEmail(transaction, {
-          recipientEmail: approver.email,
+        await notifyStaff(transaction, {
           userId: approver.id,
+          workOrderId: workOrder.id,
+          email: "always",
           eventKey: `warranty-claim:${audit.id}`,
           subject: `Warranty claim to review: WIP ${workOrder.workOrderNumber}`,
           body: `${user.displayName} opened a warranty claim on WIP ${workOrder.workOrderNumber} (${workOrder.equipment.productModel}, serial ${workOrder.equipment.serialNumber}, ${workOrder.company.name}).\n\nIt's claimed against WIP ${previous.workOrderNumber}.${input.reason ? `\n\nReason: ${input.reason}` : ""}\n\nOpen the work order to approve or deny it.`,

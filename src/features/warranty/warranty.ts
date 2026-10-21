@@ -1,4 +1,6 @@
-import { shopTimeZone } from "@/lib/dates";
+import { shopToday } from "@/lib/dates";
+
+export { shopToday };
 
 /**
  * Repair warranty rules. A warranty runs for a number of months from the day the pump ships
@@ -25,12 +27,6 @@ export function warrantyEndDate(shippedAt: Date | null, months: number | null) {
 /** The warranty length a repair gets unless someone sets another: the contract's, else the model's. */
 export function standardWarrantyMonths(terms: { contractMonths: number | null; modelMonths: number | null }) {
   return terms.contractMonths ?? terms.modelMonths ?? null;
-}
-
-/** Today's calendar date at the shop, as midnight UTC, to compare with stored calendar dates. */
-export function shopToday(now = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: shopTimeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-  return new Date(`${parts}T00:00:00.000Z`);
 }
 
 export type WarrantyState = "none" | "active" | "expired";

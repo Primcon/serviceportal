@@ -1,5 +1,5 @@
 import { UserRole } from "@prisma/client";
-import { BarChart3, BookOpen, Building2, ClipboardList, KanbanSquare, ListChecks, FileSpreadsheet, Inbox, LayoutDashboard, Package, ScrollText, Settings, UsersRound, Workflow, type LucideIcon } from "lucide-react";
+import { BarChart3, Bell, BookOpen, Building2, ClipboardList, KanbanSquare, ListChecks, FileSpreadsheet, Inbox, LayoutDashboard, Package, ScrollText, Settings, UsersRound, Workflow, type LucideIcon } from "lucide-react";
 
 export const allInternalRoles: UserRole[] = [UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER, UserRole.VACTECH_QA, UserRole.VACTECH_SERVICE_USER];
 export const managerRoles: UserRole[] = [UserRole.PORTAL_ADMINISTRATOR, UserRole.VACTECH_MANAGER];
@@ -9,8 +9,8 @@ export type WorkspaceNavigationItem = {
   label: string;
   icon: LucideIcon;
   roles: UserRole[];
-  /** Shows the pending access-request count next to the label. */
-  badge?: "pendingAccessRequests";
+  /** Shows a count next to the label: pending access requests, or the viewer's unread notifications. */
+  badge?: "pendingAccessRequests" | "unreadNotifications";
 };
 
 export type WorkspaceNavigationGroup = { label: string; items: WorkspaceNavigationItem[] };
@@ -21,6 +21,7 @@ export const workspaceNavigation: WorkspaceNavigationGroup[] = [
     label: "Service",
     items: [
       { href: "/workspace", label: "My work", icon: LayoutDashboard, roles: allInternalRoles },
+      { href: "/workspace/notifications", label: "Notifications", icon: Bell, roles: allInternalRoles, badge: "unreadNotifications" },
       { href: "/workspace/board", label: "Stage board", icon: KanbanSquare, roles: allInternalRoles },
       { href: "/workspace/dashboard", label: "Operations", icon: BarChart3, roles: managerRoles },
       { href: "/workspace/work-orders", label: "Work orders", icon: ClipboardList, roles: allInternalRoles },

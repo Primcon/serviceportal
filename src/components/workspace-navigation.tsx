@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { UserRole } from "@prisma/client";
-import { LogOut, Menu, Search, X } from "lucide-react";
+import { Bell, LogOut, Menu, Search, X } from "lucide-react";
 import { navigationForRole } from "@/features/navigation/workspace-items";
 import { roleLabels } from "@/lib/labels";
 
 type Viewer = { displayName: string; role: UserRole } | null;
-type Badges = { pendingAccessRequests: number };
+type Badges = { pendingAccessRequests: number; unreadNotifications: number };
 
 function isCurrentPath(pathname: string, href: string) {
   return href === "/workspace" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
@@ -39,7 +39,7 @@ function SidebarContents({ viewer, badges, onNavigate }: { viewer: Viewer; badge
             <ul className="grid gap-0.5">
               {group.items.map(({ href, label, icon: Icon, badge }) => {
                 const current = isCurrentPath(pathname, href);
-                const count = badge === "pendingAccessRequests" ? badges.pendingAccessRequests : 0;
+                const count = badge ? badges[badge] : 0;
                 return (
                   <li key={href}>
                     <Link
@@ -50,7 +50,7 @@ function SidebarContents({ viewer, badges, onNavigate }: { viewer: Viewer; badge
                     >
                       <Icon size={16} />
                       <span className="flex-1">{label}</span>
-                      {count > 0 && <span className="min-w-5 bg-brand px-1.5 text-center text-xs text-white" title={`${count} waiting for review`}>{count}</span>}
+                      {count > 0 && <span className="min-w-5 bg-brand px-1.5 text-center text-xs text-white" title={badge === "unreadNotifications" ? `${count} unread` : `${count} waiting for review`}>{count}</span>}
                     </Link>
                   </li>
                 );
@@ -100,10 +100,25 @@ export default function WorkspaceNavigation({ viewer, badges }: { viewer: Viewer
       {/* Phones and tablets: a top bar with a slide-out menu. */}
       <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-paper px-4 py-3 lg:hidden">
         <Logo />
+        <div className="flex items-center gap-2">
+        {viewer && badges.unreadNotifications > 0 && (
+          <Link className="relative grid size-10 place-items-center border border-line text-brand hover:border-brand" href="/workspace/notifications">
+            <Bell size={19} />
+            <span className="absolute -right-1.5 -top-1.5 min-w-5 bg-brand px-1 text-center text-xs font-bold text-white">{badges.unreadNotifications}</span>
+            <span className="sr-only">{badges.unreadNotifications} unread notifications</span>
+          </Link>
+        )}
+        {viewer && (
+          <Link className="grid size-10 place-items-center border border-line text-muted hover:border-brand hover:text-brand" href="/workspace/search">
+            <Search size={19} />
+            <span className="sr-only">Search</span>
+          </Link>
+        )}
         <button aria-controls="workspace-drawer" aria-expanded={isMenuOpen} className="grid size-10 place-items-center border border-line text-muted hover:border-brand hover:text-brand" onClick={() => setIsMenuOpen(true)} type="button">
           <Menu size={20} />
           <span className="sr-only">Open menu</span>
         </button>
+        </div>
       </header>
       {isMenuOpen && (
         <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onMouseDown={() => setIsMenuOpen(false)} role="presentation">

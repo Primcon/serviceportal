@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import WorkspaceNavigation from "@/components/workspace-navigation";
 import { managerRoles } from "@/features/navigation/workspace-items";
+import { countUnreadStaffNotifications } from "@/features/staff-notifications/queries";
 import { prisma } from "@/lib/prisma";
 import { getWorkspaceViewer } from "@/services/page-access";
 import { getRequestActor } from "@/services/request-actor";
@@ -12,12 +13,13 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   const pendingAccessRequests = viewer && managerRoles.includes(viewer.internalRole)
     ? await prisma.accessRequest.count({ where: { status: "PENDING" } })
     : 0;
+  const unreadNotifications = viewer ? await countUnreadStaffNotifications(viewer.id) : 0;
 
   return (
     <div className="min-h-screen bg-surface lg:flex print:block print:min-h-0 print:bg-white">
       {/* The navigation is left off printed pages, such as the traveler. */}
       <div className="contents print:hidden">
-        <WorkspaceNavigation badges={{ pendingAccessRequests }} viewer={viewer ? { displayName: viewer.displayName, role: viewer.internalRole } : null} />
+        <WorkspaceNavigation badges={{ pendingAccessRequests, unreadNotifications }} viewer={viewer ? { displayName: viewer.displayName, role: viewer.internalRole } : null} />
       </div>
       <div className="min-w-0 flex-1">{children}</div>
     </div>

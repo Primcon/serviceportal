@@ -11,7 +11,7 @@ import { managerRoles } from "@/features/navigation/workspace-items";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUserForRoles } from "@/services/authorization";
 import { workOrderSequence } from "@/features/work-orders/intake";
-import { highestWorkOrderNumber } from "@/features/settings/queries";
+import { highestWorkOrderNumber, signedTravelerSetting } from "@/features/settings/queries";
 
 function value(formData: FormData, name: string) {
   return formData.get(name)?.toString() ?? "";
@@ -145,5 +145,21 @@ export async function saveNextWorkOrderNumber(formData: FormData): Promise<Actio
     revalidatePath("/workspace/settings");
     revalidatePath("/workspace/work-orders/new");
     return `The next work order will be WIP ${nextNumber}.`;
+  });
+}
+
+/** Turns on or off the rule that a job's signed traveler is uploaded before the job is completed. */
+export async function saveSignedTravelerRequirement(formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const required = formData.get("required") === "on";
+    const actor = await getActiveInternalUserForRoles(managerRoles);
+    await prisma.$transaction(async (transaction) => {
+      const current = await transaction.portalSetting.findUnique({ where: { key: signedTravelerSetting } });
+      if ((current?.value !== "false") === required) return;
+      await transaction.portalSetting.upsert({ where: { key: signedTravelerSetting }, create: { key: signedTravelerSetting, value: String(required) }, update: { value: String(required) } });
+      await recordAudit(transaction, { actorUserId: actor.id, eventType: "portal-setting.updated", entityType: "PortalSetting", entityId: signedTravelerSetting, metadata: { signedTravelerRequired: required } });
+    });
+    revalidatePath("/workspace/settings");
+    return required ? "Jobs now need their signed traveler uploaded before they're completed." : "Jobs can be completed without an uploaded signed traveler.";
   });
 }

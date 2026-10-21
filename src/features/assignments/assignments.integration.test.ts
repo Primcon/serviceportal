@@ -45,6 +45,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.notification.deleteMany({ where: { workOrder: { companyId } } });
+  await prisma.attachment.deleteMany({ where: { workOrder: { companyId } } });
   await prisma.workOrder.deleteMany({ where: { companyId } });
   await prisma.equipment.deleteMany({ where: { companyId } });
   await prisma.company.deleteMany({ where: { id: companyId } });
@@ -106,9 +108,34 @@ describe("handing off while changing the stage", () => {
     expect((await prisma.workOrder.findUniqueOrThrow({ where: { id: order.id } })).assignedToId).toBeNull();
   });
 
+  it("tells the person a job is handed to, and only them", async () => {
+    const order = await workOrder("notify");
+    await assignWorkOrder(form({ workOrderId: order.id, assigneeId: technicianId, note: "Bearings are in the drawer." }));
+    await assignWorkOrder(form({ workOrderId: order.id, assigneeId: "me", note: "" }));
+    const notifications = await prisma.notification.findMany({ where: { workOrderId: order.id } });
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({ kind: "STAFF", userId: technicianId, readAt: null, status: "OPTED_OUT", subject: `WIP ${order.workOrderNumber} handed to you`, linkPath: `/workspace/work-orders/${order.id}` });
+    expect(notifications[0].body).toContain("Bearings are in the drawer.");
+  });
+
+  it("needs the signed traveler before a job is completed, unless a manager overrides", async () => {
+    const order = await workOrder("traveler");
+    await expect(updateWorkOrderStatus(form({ workOrderId: order.id, serviceStageId: stages.COMPLETED.id, condition: "NORMAL", note: "" }))).resolves.toEqual({ status: "error", message: "Upload the signed traveler first: in Documents, choose the type Signed traveler. A manager can override." });
+    process.env.DEVELOPMENT_INTERNAL_ROLE = UserRole.VACTECH_MANAGER;
+    await expect(updateWorkOrderStatus(form({ workOrderId: order.id, serviceStageId: stages.COMPLETED.id, condition: "NORMAL", note: "", overrideReason: "" }))).resolves.toMatchObject({ status: "error", message: expect.stringContaining("give an override reason") });
+    await expect(updateWorkOrderStatus(form({ workOrderId: order.id, serviceStageId: stages.COMPLETED.id, condition: "NORMAL", note: "", overrideReason: "Traveler scanned on the old system." }))).resolves.toMatchObject({ status: "success" });
+    process.env.DEVELOPMENT_INTERNAL_ROLE = UserRole.VACTECH_SERVICE_USER;
+    expect((await prisma.workOrderStatusHistory.findFirstOrThrow({ where: { workOrderId: order.id, serviceStageId: stages.COMPLETED.id } })).overrideReason).toBe("Traveler scanned on the old system.");
+    expect(await prisma.auditEvent.count({ where: { workOrderId: order.id, eventType: "work-order.completed-without-traveler" } })).toBe(1);
+    // Cancelling is never held up.
+    const cancelled = await workOrder("traveler-cancel");
+    await expect(updateWorkOrderStatus(form({ workOrderId: cancelled.id, serviceStageId: stages.COMPLETED.id, condition: "CANCELLED", note: "" }))).resolves.toMatchObject({ status: "success" });
+  });
+
   it("clears the owner when a job is completed or cancelled", async () => {
     const [completed, cancelled] = await Promise.all([workOrder("completed"), workOrder("cancelled")]);
     await prisma.workOrder.updateMany({ where: { id: { in: [completed.id, cancelled.id] } }, data: { assignedToId: technicianId } });
+    await prisma.attachment.create({ data: { workOrderId: completed.id, kind: "DOCUMENT", documentType: "SIGNED_TRAVELER", originalStorageKey: `test/${suffix}/traveler`, fileName: "traveler.pdf", mimeType: "application/pdf", sizeBytes: 1, uploadedById: meId } });
     await updateWorkOrderStatus(form({ workOrderId: completed.id, serviceStageId: stages.COMPLETED.id, condition: "NORMAL", note: "" }));
     await updateWorkOrderStatus(form({ workOrderId: cancelled.id, serviceStageId: stages.RECEIVED.id, condition: "CANCELLED", note: "Customer withdrew.", handoff: technicianId }));
     const after = await prisma.workOrder.findMany({ where: { id: { in: [completed.id, cancelled.id] } } });

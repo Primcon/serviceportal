@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: shopTimeZone });
 
-const kindIcons: Record<NotificationKind, typeof Bell> = { SERVICE_UPDATE: MessageSquareText, STATUS_CHANGE: Flag, DOCUMENT_SHARED: FileText, ACCESS: Bell };
+const kindIcons: Record<NotificationKind, typeof Bell> = { SERVICE_UPDATE: MessageSquareText, STATUS_CHANGE: Flag, DOCUMENT_SHARED: FileText, ACCESS: Bell, STAFF: Bell };
 
 const emailChoices = [
   { name: "emailUpdates", label: "Updates from your service team", detail: "When the team posts news about a repair and chooses to notify you." },

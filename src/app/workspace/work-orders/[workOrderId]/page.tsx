@@ -73,7 +73,10 @@ function Facts({ items }: { items: [string, ReactNode][] }) {
 export default async function InternalWorkOrderPage({ params, searchParams }: { params: Promise<{ workOrderId: string }>; searchParams: Promise<SearchParams> }) {
   const viewer = await requireWorkspaceUser();
   const { workOrderId } = await params;
-  const initialPhotoId = firstParam((await searchParams).photo);
+  const query = await searchParams;
+  const initialPhotoId = firstParam(query.photo);
+  // Set when staff arrive here straight from opening the work order at intake.
+  const justOpened = firstParam(query.opened) === "1";
   const workOrder = await getInternalWorkOrder(workOrderId);
   if (!workOrder) notFound();
 
@@ -126,8 +129,14 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
   const claimDecisionLabels = { PENDING: "Waiting for a decision", APPROVED: "Approved: covered by warranty", DENIED: "Denied: not covered" } as const;
 
   return (
-    <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
+    <main className="mx-auto max-w-7xl px-5 pb-28 pt-8 sm:px-8 lg:pb-8">
       <Link className="flex w-fit items-center gap-2 text-sm font-bold text-brand" href="/workspace/work-orders"><ArrowLeft size={16} /> Work orders</Link>
+      {justOpened && (
+        <p className="mt-5 flex flex-wrap items-center justify-between gap-3 border-l-4 border-success bg-success-soft px-4 py-3 text-sm">
+          <span><span className="font-bold">Work order {workOrder.workOrderNumber} opened.</span> Print the traveler to go with the pump.</span>
+          <Link className={buttonStyles({ size: "sm" })} href={`/workspace/work-orders/${workOrder.id}/traveler`}><Printer size={15} /> Print traveler</Link>
+        </p>
+      )}
 
       <header className="mt-5 border-b border-line pb-6">
         <div className="flex flex-wrap items-start justify-between gap-5">
@@ -240,7 +249,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
         </div>
 
         <aside className="grid content-start gap-6">
-          <Section icon={<ClipboardCheck className="text-brand" size={20} />} title="Service state">
+          <Section icon={<ClipboardCheck className="text-brand" size={20} />} id="service-state" title="Service state">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-l-4 border-brand bg-surface px-4 py-3">
               <div>
                 <p className="text-xs font-bold tracking-[0.08em] text-muted">WITH</p>
@@ -273,8 +282,8 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
               <Field hint="Staff only. Say what was done and what's next." htmlFor="status-note" label="Handoff note" optional>
                 <textarea className={fieldStyles} id="status-note" maxLength={1000} name="note" rows={2} />
               </Field>
-              {isManager && checklist && (
-                <Field hint="Only needed to move a job on while required checklist steps are unsigned. It's recorded." htmlFor="override-reason" label="Manager override reason" optional>
+              {isManager && !isClosed && (
+                <Field hint="Only needed to move a job on with required checklist steps unsigned, or to complete it without a signed traveler. It's recorded." htmlFor="override-reason" label="Manager override reason" optional>
                   <input className={fieldStyles} id="override-reason" maxLength={500} name="overrideReason" />
                 </Field>
               )}
@@ -437,6 +446,22 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
           ? <ModelDocumentList documents={manuals} downloadPath="/api/internal/model-documents" showVisibility />
           : <p className="text-sm text-muted">{workOrder.equipment.productModelId ? "No manuals have been added for this model yet." : "This pump isn't linked to a catalog model yet. Edit the pump to link it and see its manuals here."}</p>}
       </Section>
+
+      {/* Phones: the things technicians do most, without scrolling past the timeline. */}
+      <nav aria-label="Jump to" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-paper pb-[env(safe-area-inset-bottom,0px)] text-xs font-bold lg:hidden">
+        {!isClosed && !isMine ? (
+          <ActionFeedbackForm action={assignWorkOrder} className="contents">
+            <input name="workOrderId" type="hidden" value={workOrder.id} />
+            <input name="assigneeId" type="hidden" value="me" />
+            <button className="flex flex-col items-center gap-1 px-2 py-2.5 text-brand"><Hand size={18} /> Take it</button>
+          </ActionFeedbackForm>
+        ) : (
+          <a className="flex flex-col items-center gap-1 px-2 py-2.5 text-muted" href="#warranty"><ShieldCheck size={18} /> Shipping</a>
+        )}
+        <a className="flex flex-col items-center gap-1 px-2 py-2.5 text-muted" href="#service-state"><ClipboardCheck size={18} /> Stage</a>
+        <a className="flex flex-col items-center gap-1 px-2 py-2.5 text-muted" href="#photos"><Camera size={18} /> Photos</a>
+        <a className="flex flex-col items-center gap-1 px-2 py-2.5 text-muted" href="#checklist"><ListChecks size={18} /> Checklist</a>
+      </nav>
     </main>
   );
 }

@@ -17,4 +17,11 @@ describe("queue timing", () => {
     expect(isOverdue(new Date("2026-10-08T00:00:00Z"), now)).toBe(false);
     expect(isOverdue(null, now)).toBe(false);
   });
+
+  it("goes by the shop's day, so a job due today isn't overdue in the evening", () => {
+    // 7 PM on Oct 7 in Arizona is already Oct 8 in UTC.
+    const evening = new Date("2026-10-08T02:00:00Z");
+    expect(isOverdue(new Date("2026-10-07T00:00:00Z"), evening)).toBe(false);
+    expect(isOverdue(new Date("2026-10-06T00:00:00Z"), evening)).toBe(true);
+  });
 });

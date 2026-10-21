@@ -30,6 +30,14 @@ function Body({ text }: { text: string }) {
   return <p className="whitespace-pre-line">{text}</p>;
 }
 
+/** What a stage or condition change is called on the timeline. */
+function statusTitle(entry: Extract<TimelineEntry, { kind: "status" }>) {
+  if (entry.isFirst) return `Work order opened at ${entry.stage}`;
+  if (entry.stageChanged) return `Moved to ${entry.stage}`;
+  if (entry.condition !== "NORMAL") return formatEnumLabel(entry.condition);
+  return entry.previousCondition && entry.previousCondition !== "NORMAL" ? `No longer ${formatEnumLabel(entry.previousCondition).toLowerCase()}` : `Still in ${entry.stage}`;
+}
+
 /** The work order's history, newest first. Internal entries are marked so staff don't mistake them for customer-visible ones. */
 export function TimelineList({ entries, workOrderId }: { entries: TimelineEntry[]; workOrderId: string }) {
   if (!entries.length) return <p className="px-1 py-6 text-sm text-muted">Nothing recorded yet.</p>;
@@ -40,10 +48,10 @@ export function TimelineList({ entries, workOrderId }: { entries: TimelineEntry[
         switch (entry.kind) {
           case "status":
             return (
-              <Entry icon={<Flag size={15} />} key={`status-${entry.id}`} meta={meta} title={entry.isFirst ? `Work order opened at ${entry.stage}` : `Moved to ${entry.stage}`} tone="ink">
-                <p className="text-muted">Customer sees: {customerStatusLabels[entry.customerStatus]}{entry.condition !== "NORMAL" && ` · Condition: ${formatEnumLabel(entry.condition)}`}</p>
+              <Entry icon={<Flag size={15} />} key={`status-${entry.id}`} meta={meta} title={statusTitle(entry)} tone="ink">
+                <p className="text-muted">{entry.stageChanged ? "" : `${entry.stage} · `}Customer sees: {customerStatusLabels[entry.customerStatus]}{entry.stageChanged && entry.condition !== "NORMAL" && ` · Condition: ${formatEnumLabel(entry.condition)}`}</p>
                 {entry.note && <div className="mt-1 border-l-2 border-line pl-3"><Body text={entry.note} /></div>}
-                {entry.overrideReason && <p className="mt-1 border-l-2 border-danger pl-3"><span className="font-bold text-danger">Manager override, checklist steps unsigned:</span> {entry.overrideReason}</p>}
+                {entry.overrideReason && <p className="mt-1 border-l-2 border-danger pl-3"><span className="font-bold text-danger">Manager override:</span> {entry.overrideReason}</p>}
               </Entry>
             );
           case "customer-update":

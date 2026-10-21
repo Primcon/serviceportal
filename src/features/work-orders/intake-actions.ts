@@ -9,6 +9,7 @@ import { UserFacingError } from "@/lib/errors";
 import { runAction } from "@/lib/run-action";
 import { detailFields, detailsSchema } from "@/features/work-orders/details-schema";
 import { assignWorkOrderNumber, findOrCreateProductModel, modelDisplayName } from "@/features/work-orders/intake";
+import { checkSerialElsewhere } from "@/features/work-orders/pump-search";
 import { ensureActiveChecklistTemplate } from "@/features/checklists/default-template";
 import { ensureInitialStages } from "@/features/work-orders/initial-stages";
 import { recordAudit } from "@/services/audit";
@@ -69,6 +70,7 @@ export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
         }
         const duplicateSerial = await transaction.equipment.findFirst({ where: { companyId: company.id, serialNumber: { equals: newPump.serialNumber, mode: "insensitive" } }, select: { id: true } });
         if (duplicateSerial) throw new UserFacingError("This customer already has a pump with that serial number. Search for it instead of adding it again.");
+        await checkSerialElsewhere(transaction, company.id, newPump.serialNumber, formData.get("addAnyway") === "on");
         const model = newPump.productModelId
           ? await transaction.productModel.findUnique({ where: { id: newPump.productModelId } })
           : await findOrCreateProductModel(transaction, newPump.newManufacturer || null, newPump.newModelName);
@@ -110,6 +112,6 @@ export async function openWorkOrder(formData: FormData): Promise<ActionResult> {
     revalidatePath("/portal");
   });
   // Redirect outside runAction, only once the work order exists.
-  if (result.status === "success" && createdId) redirect(`/workspace/work-orders/${createdId}`);
+  if (result.status === "success" && createdId) redirect(`/workspace/work-orders/${createdId}?opened=1`);
   return result;
 }

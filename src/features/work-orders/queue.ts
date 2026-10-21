@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { openWorkOrderWhere } from "@/features/records/merge";
+import { shopToday } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 const dayInMilliseconds = 24 * 60 * 60 * 1000;
@@ -9,10 +10,10 @@ export function wholeDaysSince(date: Date, now = new Date()) {
   return Math.max(0, Math.floor((now.getTime() - date.getTime()) / dayInMilliseconds));
 }
 
-/** A promised date is stored as midnight UTC of that day, and the job is overdue from the day after. */
+/** A promised date is stored as midnight UTC of that day, and the job is overdue from the day after, at the shop. */
 export function isOverdue(promisedAt: Date | null, now = new Date()) {
   if (!promisedAt) return false;
-  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) > promisedAt.getTime();
+  return shopToday(now).getTime() > promisedAt.getTime();
 }
 
 const queueSelect = {
@@ -43,8 +44,7 @@ export function openWorkOrders(where: Prisma.WorkOrderWhereInput = {}, take = 50
 
 /** Counts for the tiles above the queues. */
 export async function queueCounts(userId: string) {
-  const today = new Date();
-  const startOfToday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const startOfToday = shopToday();
   const [mine, unassigned, overdue, waiting] = await Promise.all([
     prisma.workOrder.count({ where: { ...openWorkOrderWhere, assignedToId: userId } }),
     prisma.workOrder.count({ where: { ...openWorkOrderWhere, assignedToId: null } }),

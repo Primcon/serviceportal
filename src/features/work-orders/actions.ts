@@ -10,8 +10,10 @@ import { runAction } from "@/lib/run-action";
 import { findOrCreateProductModel, modelDisplayName } from "@/features/work-orders/intake";
 import { setWorkOrderAssignee } from "@/features/assignments/assign";
 import { notifyDocumentShared } from "@/features/work-orders/document-notification";
+import { checkSerialElsewhere } from "@/features/work-orders/pump-search";
 import { unsignedStepsBefore } from "@/features/checklists/checklist";
 import { shippingDefaults } from "@/features/warranty/queries";
+import { signedTravelerRequired } from "@/features/settings/queries";
 import { recordAudit } from "@/services/audit";
 import { getActiveInternalUser, getActiveInternalUserForRoles, getAuthorizedWorkOrder } from "@/services/authorization";
 import { detectDocumentType, supportedDocumentDescription } from "@/services/file-types";
@@ -147,6 +149,7 @@ export async function createEquipment(formData: FormData): Promise<ActionResult>
       if (existingEquipment) {
         throw new UserFacingError("This customer already has a pump with that serial number.");
       }
+      await checkSerialElsewhere(transaction, company.id, input.serialNumber, formData.get("addAnyway") === "on");
       const model = input.productModelId
         ? await transaction.productModel.findUnique({ where: { id: input.productModelId } })
         : await findOrCreateProductModel(transaction, input.newManufacturer || null, input.newModelName);
@@ -214,18 +217,29 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
       });
       // Moving forward needs every required checklist step of the earlier stages signed. A
       // manager can move it on regardless, with a reason. Cancelling a job is never held up.
+      const isManager = internalUser.internalRole === UserRole.PORTAL_ADMINISTRATOR || internalUser.internalRole === UserRole.VACTECH_MANAGER;
       let overridden: string[] = [];
       if (stage.sequence > workOrder.serviceStage.sequence && input.condition !== "CANCELLED") {
         const unsigned = await unsignedStepsBefore(transaction, workOrder, stage.sequence);
         if (unsigned.length) {
           const labels = unsigned.map((step) => step.label);
-          const isManager = internalUser.internalRole === UserRole.PORTAL_ADMINISTRATOR || internalUser.internalRole === UserRole.VACTECH_MANAGER;
           if (!isManager) throw new UserFacingError(`Sign ${labels.length === 1 ? "this step" : "these steps"} first: ${labels.join("; ")}. A manager can override.`);
           if (!input.overrideReason) throw new UserFacingError(`${labels.length === 1 ? "A required step is" : `${labels.length} required steps are`} unsigned: ${labels.join("; ")}. To move on anyway, give an override reason.`);
           overridden = labels;
         }
       }
       const isCompleted = stage.code === "COMPLETED";
+      // The signed paper traveler is the ISO record, so it has to be scanned in before the job is
+      // completed. A manager can complete it without one, with a reason. Cancelling is never held up.
+      let completedWithoutTraveler = false;
+      if (isCompleted && workOrder.serviceStageId !== stage.id && input.condition !== "CANCELLED" && await signedTravelerRequired(transaction)) {
+        const traveler = await transaction.attachment.count({ where: { workOrderId: workOrder.id, kind: "DOCUMENT", documentType: "SIGNED_TRAVELER" } });
+        if (!traveler) {
+          if (!isManager) throw new UserFacingError("Upload the signed traveler first: in Documents, choose the type Signed traveler. A manager can override.");
+          if (!input.overrideReason) throw new UserFacingError("No signed traveler has been uploaded for this job. Upload it in Documents, or give an override reason to complete it anyway.");
+          completedWithoutTraveler = true;
+        }
+      }
       // Reaching Shipped records today as the ship date and starts the warranty, unless a ship date was already entered.
       const shipping = stage.code === "SHIPPED" && workOrder.serviceStageId !== stage.id && input.condition !== "CANCELLED" ? await shippingDefaults(transaction, workOrder.id) : null;
       // A finished or cancelled job isn't anyone's work any more.
@@ -262,9 +276,12 @@ export async function updateWorkOrderStatus(formData: FormData): Promise<ActionR
           condition: input.condition,
           changedById: internalUser.id,
           note: input.note,
-          overrideReason: overridden.length ? input.overrideReason : null,
+          overrideReason: overridden.length || completedWithoutTraveler ? input.overrideReason : null,
         },
       });
+      if (completedWithoutTraveler) {
+        await recordAudit(transaction, { workOrderId: input.workOrderId, actorUserId: internalUser.id, eventType: "work-order.completed-without-traveler", entityType: "WorkOrderStatusHistory", entityId: statusHistory.id, metadata: { reason: input.overrideReason } });
+      }
       if (overridden.length) {
         await recordAudit(transaction, { workOrderId: input.workOrderId, actorUserId: internalUser.id, eventType: "checklist.overridden", entityType: "WorkOrderStatusHistory", entityId: statusHistory.id, metadata: { reason: input.overrideReason, unsignedSteps: overridden, movedTo: stage.displayName } });
       }

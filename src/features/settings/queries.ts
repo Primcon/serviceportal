@@ -34,3 +34,11 @@ export async function workOrderNumbering() {
   ]);
   return { next: Math.max(sequence?.nextValue ?? 1, highest + 1), highest };
 }
+
+/** The setting that decides whether a job needs its signed paper traveler uploaded before it's completed. On unless turned off. */
+export const signedTravelerSetting = "require-signed-traveler";
+
+export async function signedTravelerRequired(client: Pick<typeof prisma, "portalSetting"> = prisma) {
+  const setting = await client.portalSetting.findUnique({ where: { key: signedTravelerSetting } });
+  return setting?.value !== "false";
+}
