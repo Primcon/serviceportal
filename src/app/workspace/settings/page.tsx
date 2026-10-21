@@ -1,12 +1,12 @@
 import { ListKind } from "@prisma/client";
-import { Building, Flag, Hash, Plus, Settings, ShieldCheck, Wrench } from "lucide-react";
+import { Building, FileSignature, Flag, Hash, Plus, Settings, ShieldCheck, Wrench } from "lucide-react";
 import type { ReactNode } from "react";
 import ActionFeedbackForm from "@/components/action-feedback-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { buttonStyles, fieldStyles, panelStyles } from "@/components/ui/styles";
 import { managerRoles } from "@/features/navigation/workspace-items";
-import { saveListOption, saveNextWorkOrderNumber, saveServiceCenter } from "@/features/settings/actions";
-import { listOptions, serviceCenters, workOrderNumbering } from "@/features/settings/queries";
+import { saveListOption, saveNextWorkOrderNumber, saveServiceCenter, saveSignedTravelerRequirement } from "@/features/settings/actions";
+import { listOptions, serviceCenters, signedTravelerRequired, workOrderNumbering } from "@/features/settings/queries";
 import { saveCustomerWarrantyVisibility } from "@/features/warranty/actions";
 import { customerWarrantyVisible, warrantyApprovers } from "@/features/warranty/queries";
 import { requireWorkspaceUser } from "@/services/page-access";
@@ -57,7 +57,7 @@ async function PicklistSection({ kind, title, description, icon }: { kind: ListK
 
 export default async function SettingsPage() {
   await requireWorkspaceUser(managerRoles);
-  const [centers, numbering, customersSeeWarranty, approvers] = await Promise.all([serviceCenters({ includeInactive: true }), workOrderNumbering(), customerWarrantyVisible(), warrantyApprovers()]);
+  const [centers, numbering, customersSeeWarranty, approvers, travelerRequired] = await Promise.all([serviceCenters({ includeInactive: true }), workOrderNumbering(), customerWarrantyVisible(), warrantyApprovers(), signedTravelerRequired()]);
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
@@ -109,6 +109,17 @@ export default async function SettingsPage() {
             <label className="grid gap-1.5 text-sm font-bold" htmlFor="next-wip">Next WIP number<input className={fieldStyles} defaultValue={numbering.next} id="next-wip" key={numbering.next} min={numbering.highest + 1} name="nextNumber" required type="number" /></label>
             <button className={buttonStyles({ variant: "outline", size: "sm", className: "h-[42px]" })}>Save</button>
             <p className="text-sm text-muted">{numbering.highest ? `Highest used so far: ${numbering.highest}.` : "No work orders yet."}</p>
+          </ActionFeedbackForm>
+        </SettingsSection>
+
+        <SettingsSection
+          description="The signed paper traveler is the ISO record of the work. When this is on, a job can't be completed until its signed traveler is uploaded as a document of type Signed traveler. A manager can still complete a job without one by giving a reason, which is recorded."
+          icon={<FileSignature className="text-brand" size={20} />}
+          title="Completing a job"
+        >
+          <ActionFeedbackForm action={saveSignedTravelerRequirement} className="flex flex-wrap items-center gap-4" key={String(travelerRequired)}>
+            <label className="flex items-start gap-2 text-sm"><input className="mt-0.5 size-4 accent-brand" defaultChecked={travelerRequired} name="required" type="checkbox" /><span className="font-bold">Require the signed traveler before a job is completed</span></label>
+            <button className={buttonStyles({ variant: "outline", size: "sm" })}>Save</button>
           </ActionFeedbackForm>
         </SettingsSection>
 

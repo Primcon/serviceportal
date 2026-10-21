@@ -1,6 +1,6 @@
 import { ageDistribution, median, throughputWindowStart, weeklyThroughput } from "@/features/dashboard/metrics";
 import { openWorkOrderWhere } from "@/features/records/merge";
-import { shopTimeZone } from "@/lib/dates";
+import { shopTimeZone, shopToday } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 const weeksShown = 8;
@@ -8,7 +8,7 @@ const day = 86_400_000;
 
 /** Everything the operations dashboard shows, in one round of queries. */
 export async function operationsDashboard(now = new Date()) {
-  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const startOfToday = shopToday(now);
   const windowStart = throughputWindowStart(weeksShown, now, shopTimeZone);
   const waitingConditions = ["WAITING_ON_PARTS", "AWAITING_CUSTOMER", "CUSTOMER_HOLD"] as const;
 

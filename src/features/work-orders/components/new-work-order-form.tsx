@@ -9,6 +9,7 @@ import { buttonStyles, fieldStyles, panelStyles } from "@/components/ui/styles";
 import { ModelFields } from "@/features/catalog/components/model-fields";
 import { openWorkOrder } from "@/features/work-orders/intake-actions";
 import type { PumpResult } from "@/features/work-orders/pump-search";
+import { SerialElsewhereWarning } from "@/features/work-orders/components/serial-elsewhere";
 import { copperClassificationLabels } from "@/lib/labels";
 
 type Company = { id: string; name: string; locations: { id: string; name: string }[] };
@@ -106,6 +107,7 @@ export function NewWorkOrderForm({ companies, models, serviceCenters, priorities
   const [pumpMode, setPumpMode] = useState<"existing" | "new">("existing");
   const [pump, setPump] = useState<PumpResult | null>(initialPump);
   const [companyId, setCompanyId] = useState("");
+  const [newSerial, setNewSerial] = useState("");
   const [centerId, setCenterId] = useState(serviceCenters.length === 1 ? serviceCenters[0].id : "");
   const locations = companies.find((company) => company.id === companyId)?.locations ?? [];
   const intake = pumpMode === "existing" ? pump?.lastIntake : null;
@@ -139,8 +141,9 @@ export function NewWorkOrderForm({ companies, models, serviceCenters, priorities
                 {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
               </select>
             </Field>
-            <Field htmlFor="new-serial" label="Serial number"><input className={fieldStyles} id="new-serial" maxLength={120} name="serialNumber" required /></Field>
+            <Field htmlFor="new-serial" label="Serial number"><input className={fieldStyles} id="new-serial" maxLength={120} name="serialNumber" onChange={(event) => setNewSerial(event.target.value)} required value={newSerial} /></Field>
             <ModelFields models={models} />
+            <SerialElsewhereWarning className="sm:col-span-2" companyId={companyId} serialNumber={newSerial} />
           </div>
         )}
       </Step>

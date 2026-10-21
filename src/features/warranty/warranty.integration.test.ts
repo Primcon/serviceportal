@@ -150,7 +150,7 @@ describe("a warranty claim", () => {
 
     // The approver is emailed, with a link to the work order.
     const email = await prisma.notification.findFirstOrThrow({ where: { recipientEmail: `warranty-approver-${suffix}@test.invalid` } });
-    expect(email).toMatchObject({ kind: "ACCESS", linkPath: `/workspace/work-orders/${second.id}`, subject: `Warranty claim to review: WIP ${second.workOrderNumber}` });
+    expect(email).toMatchObject({ kind: "STAFF", userId: approverId, readAt: null, linkPath: `/workspace/work-orders/${second.id}`, subject: `Warranty claim to review: WIP ${second.workOrderNumber}` });
     expect(email.body).toContain("Same bearing noise.");
 
     // A manager's role isn't enough: only the named approvers decide.

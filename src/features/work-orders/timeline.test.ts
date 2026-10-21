@@ -29,6 +29,23 @@ describe("buildTimeline", () => {
     expect(timeline.find((entry) => entry.id === "u1")).toMatchObject({ emailed: true });
   });
 
+  it("shows a change of condition alone as that condition, not as a stage move", () => {
+    const stage = { displayName: "Initial Inspection", customerFacingStatus: "IN_PROGRESS" as const };
+    const timeline = buildTimeline({
+      statusHistory: [
+        { id: "s1", createdAt: at(0), condition: "NORMAL", note: null, serviceStage: { displayName: "Received", customerFacingStatus: "OPEN" }, changedBy: riley },
+        { id: "s2", createdAt: at(10), condition: "NORMAL", note: null, serviceStage: stage, changedBy: riley },
+        { id: "s3", createdAt: at(20), condition: "WAITING_ON_PARTS", note: null, serviceStage: stage, changedBy: riley },
+        { id: "s4", createdAt: at(30), condition: "NORMAL", note: null, serviceStage: stage, changedBy: riley },
+      ],
+      updates: [], findings: [], attachments: [],
+    });
+    const byId = Object.fromEntries(timeline.map((entry) => [entry.id, entry]));
+    expect(byId.s2).toMatchObject({ stageChanged: true, previousCondition: "NORMAL" });
+    expect(byId.s3).toMatchObject({ stageChanged: false, condition: "WAITING_ON_PARTS" });
+    expect(byId.s4).toMatchObject({ stageChanged: false, previousCondition: "WAITING_ON_PARTS" });
+  });
+
   it("groups photos from the same person and category taken close together", () => {
     const timeline = buildTimeline({
       statusHistory: [],

@@ -132,6 +132,8 @@ enum NotificationKind {
   DOCUMENT_SHARED
   /// Access requests, approvals and invitations. Always emailed.
   ACCESS
+  /// For staff: a job handed to them, or a warranty claim to decide. Shown in the workspace's notifications.
+  STAFF
 }
 
 enum ReportType {
@@ -242,6 +244,8 @@ model NotificationPreference {
   emailUpdates Boolean @default(true)
   emailStatusChanges Boolean @default(true)
   emailDocuments Boolean @default(true)
+  /// Staff: also email when a job is handed to them. Off unless they turn it on; it always shows in their notifications.
+  emailHandoffs Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

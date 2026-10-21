@@ -55,11 +55,11 @@ export default async function WorkspacePage() {
         title="My work"
       />
 
-      <section aria-label="Queue summary" className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Queue summary" className="mt-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {tiles.map((tile) => (
-          <Link className={`group border-l-4 bg-paper p-5 hover:border-brand ${tile.accent ? "border-brand" : "border-line"}`} href={tile.href} key={tile.label}>
+          <Link className={`group border-l-4 bg-paper p-4 hover:border-brand sm:p-5 ${tile.accent ? "border-brand" : "border-line"}`} href={tile.href} key={tile.label}>
             <span className={tile.danger ? "text-danger" : "text-muted group-hover:text-brand"}>{tile.icon}</span>
-            <p className={`mt-3 text-3xl font-bold tabular-nums ${tile.danger ? "text-danger" : ""}`}>{tile.value}</p>
+            <p className={`mt-2 text-2xl font-bold tabular-nums sm:mt-3 sm:text-3xl ${tile.danger ? "text-danger" : ""}`}>{tile.value}</p>
             <p className="mt-1 text-sm text-muted">{tile.label}</p>
           </Link>
         ))}

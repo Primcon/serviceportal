@@ -49,6 +49,8 @@ export const emailPreferenceFor = {
   STATUS_CHANGE: "emailStatusChanges",
   DOCUMENT_SHARED: "emailDocuments",
   ACCESS: null,
+  // Staff choose this in the workspace; there's no unsubscribe link for it.
+  STAFF: null,
 } as const satisfies Record<NotificationKind, "emailUpdates" | "emailStatusChanges" | "emailDocuments" | null>;
 
 /**
@@ -187,7 +189,7 @@ export function emailContent(notification: { kind: NotificationKind; subject: st
   return renderNotificationEmail({
     heading: notification.subject,
     body: notification.body,
-    link: notification.linkPath ? { url: `${origin}${notification.linkPath}`, label: notification.kind === NotificationKind.ACCESS ? "Open the portal" : "View the repair" } : null,
+    link: notification.linkPath ? { url: `${origin}${notification.linkPath}`, label: notification.kind === NotificationKind.ACCESS ? "Open the portal" : notification.kind === NotificationKind.STAFF ? "Open the work order" : "View the repair" } : null,
     logoUrl: `${origin}/pfeiffer-vacuum-logo.png`,
     footer: canOptOut
       ? { preferencesUrl: `${origin}/portal/notifications`, unsubscribeUrl: unsubscribeLink(notification.userId!, notification.kind) }
@@ -240,4 +242,33 @@ export async function dispatchPendingNotifications(limit = 25) {
     }
   }
   return { processed: notifications.length, delivered, failed, expired };
+}
+
+/**
+ * Tells a staff member about something that needs them: it shows in their workspace
+ * notifications, and is emailed when `email` is "always" or they've chosen to be emailed
+ * about hand-offs. Each event reaches them once.
+ */
+export async function notifyStaff(
+  client: Prisma.TransactionClient | PrismaClient,
+  input: { userId: string; eventKey: string; subject: string; body: string; linkPath: string; workOrderId?: string; email: "always" | "if-chosen" },
+) {
+  const user = await client.user.findUnique({ where: { id: input.userId }, select: { email: true, isActive: true, notificationPreference: { select: { emailHandoffs: true } } } });
+  if (!user?.isActive) return 0;
+  const wantsEmail = input.email === "always" || Boolean(user.notificationPreference?.emailHandoffs);
+  const result = await client.notification.createMany({
+    data: [{
+      kind: NotificationKind.STAFF,
+      userId: input.userId,
+      workOrderId: input.workOrderId ?? null,
+      recipientEmail: user.email,
+      eventKey: input.eventKey,
+      subject: input.subject,
+      body: input.body,
+      linkPath: input.linkPath,
+      status: !wantsEmail ? NotificationStatus.OPTED_OUT : emailConfiguration() ? NotificationStatus.PENDING : NotificationStatus.LOGGED,
+    }],
+    skipDuplicates: true,
+  });
+  return result.count;
 }

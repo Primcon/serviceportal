@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/modal";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
 import { ModelFields, type ModelOption } from "@/features/catalog/components/model-fields";
 import { createEquipment } from "@/features/work-orders/actions";
+import { SerialElsewhereWarning } from "@/features/work-orders/components/serial-elsewhere";
 
 type Company = { id: string; name: string; locations: { id: string; name: string }[] };
 type SerialMatch = { id: string; productModel: string; serialNumber: string; locationName: string | null };
@@ -73,6 +74,7 @@ export default function EquipmentCreateForm({ companies, models, defaultCompanyI
             <Field className="sm:col-span-2" htmlFor={`${formId}-description`} label="Description" optional>
               <input className={fieldStyles} id={`${formId}-description`} maxLength={500} name="description" />
             </Field>
+            {!serialMatches.length && <SerialElsewhereWarning className="sm:col-span-2" companyId={companyId} serialNumber={serialNumber} />}
             {serialMatches.length > 0 && (
               <aside className="border-l-4 border-danger bg-danger-soft px-4 py-3 sm:col-span-2" role="status">
                 <div className="flex items-start gap-3">

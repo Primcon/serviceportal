@@ -11,7 +11,7 @@ export type TimelineInput = {
 };
 
 export type TimelineEntry =
-  | { kind: "status"; id: string; at: Date; actor: string; stage: string; condition: WorkOrderCondition; customerStatus: CustomerFacingStatus; note: string | null; overrideReason: string | null; isFirst: boolean }
+  | { kind: "status"; id: string; at: Date; actor: string; stage: string; condition: WorkOrderCondition; customerStatus: CustomerFacingStatus; note: string | null; overrideReason: string | null; isFirst: boolean; stageChanged: boolean; previousCondition: WorkOrderCondition | null }
   | { kind: "customer-update"; id: string; at: Date; actor: string; title: string; body: string; emailed: boolean }
   | { kind: "internal-note"; id: string; at: Date; actor: string; body: string }
   | { kind: "finding"; id: string; at: Date; actor: string; title: string; body: string; shared: boolean }
@@ -31,9 +31,18 @@ export function buildTimeline(input: TimelineInput): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   const oldestStatusId = input.statusHistory.reduce<{ id: string; at: number } | null>((oldest, entry) => (!oldest || entry.createdAt.getTime() < oldest.at ? { id: entry.id, at: entry.createdAt.getTime() } : oldest), null)?.id;
 
-  for (const entry of input.statusHistory) {
-    entries.push({ kind: "status", id: entry.id, at: entry.createdAt, actor: actorName(entry.changedBy), stage: entry.serviceStage.displayName, condition: entry.condition, customerStatus: entry.serviceStage.customerFacingStatus, note: entry.note, overrideReason: entry.overrideReason ?? null, isFirst: entry.id === oldestStatusId });
-  }
+  // Oldest first, so each entry can be compared with the one before: a change of condition alone
+  // (such as Waiting on parts) stays in the same stage and is shown as that, not as a move.
+  const chronological = [...input.statusHistory].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  chronological.forEach((entry, index) => {
+    const previous = index > 0 ? chronological[index - 1] : null;
+    entries.push({
+      kind: "status", id: entry.id, at: entry.createdAt, actor: actorName(entry.changedBy), stage: entry.serviceStage.displayName, condition: entry.condition, customerStatus: entry.serviceStage.customerFacingStatus, note: entry.note, overrideReason: entry.overrideReason ?? null,
+      isFirst: entry.id === oldestStatusId,
+      stageChanged: !previous || previous.serviceStage.displayName !== entry.serviceStage.displayName,
+      previousCondition: previous?.condition ?? null,
+    });
+  });
   for (const update of input.updates) {
     entries.push(update.visibility === "CUSTOMER_VISIBLE"
       ? { kind: "customer-update", id: update.id, at: update.createdAt, actor: actorName(update.createdBy), title: update.title, body: update.body, emailed: update.notifyCustomer }

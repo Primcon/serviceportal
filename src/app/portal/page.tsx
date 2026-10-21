@@ -40,10 +40,10 @@ export default async function CustomerPortalPage({ searchParams }: { searchParam
     <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
       <PageHeader description="Follow each repair from arrival to shipping, with updates, photos and documents from your service team." eyebrow="MY REPAIRS" title="Your repairs" />
 
-      <section aria-label="Repairs by status" className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section aria-label="Repairs by status" className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Object.values(CustomerFacingStatus).map((item) => (
-          <Link aria-current={customerStatus === item ? "true" : undefined} className={`border-l-4 bg-paper p-5 hover:border-brand ${customerStatus === item ? "border-brand" : "border-line"}`} href={customerStatus === item ? "/portal" : `/portal?status=${item}`} key={item}>
-            <p className="text-3xl font-bold tabular-nums">{counts.get(item) ?? 0}</p>
+          <Link aria-current={customerStatus === item ? "true" : undefined} className={`border-l-4 bg-paper p-4 hover:border-brand sm:p-5 ${customerStatus === item ? "border-brand" : "border-line"}`} href={customerStatus === item ? "/portal" : `/portal?status=${item}`} key={item}>
+            <p className="text-2xl font-bold tabular-nums sm:text-3xl">{counts.get(item) ?? 0}</p>
             <p className="mt-1 text-sm text-muted">{customerStatusLabels[item]}</p>
           </Link>
         ))}

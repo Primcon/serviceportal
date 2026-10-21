@@ -171,7 +171,7 @@ describe("database-backed internal authorization", () => {
     await expect(createEquipment(formData)).resolves.toMatchObject({ status: "error", message: "Customer not found." });
   });
 
-  it("prevents duplicate serial numbers within a company but allows them across companies", async () => {
+  it("prevents duplicate serial numbers within a company, and allows them across companies once confirmed", async () => {
     process.env.DEVELOPMENT_INTERNAL_ROLE = UserRole.VACTECH_MANAGER;
     const suffix = crypto.randomUUID();
     const [company, otherCompany] = await Promise.all([
@@ -179,8 +179,9 @@ describe("database-backed internal authorization", () => {
       prisma.company.create({ data: { name: `Other Duplicate Equipment Company ${suffix}` } }),
     ]);
     const serialNumber = `SERIAL-${suffix}`;
-    const formData = (companyId: string, serial: string) => {
+    const formData = (companyId: string, serial: string, addAnyway = false) => {
       const input = new FormData();
+      if (addAnyway) input.set("addAnyway", "on");
       input.set("companyId", companyId);
       input.set("locationId", "");
       input.set("productModelId", "__new");
@@ -194,7 +195,9 @@ describe("database-backed internal authorization", () => {
     try {
       await createEquipment(formData(company.id, serialNumber));
       await expect(createEquipment(formData(company.id, serialNumber.toLowerCase()))).resolves.toMatchObject({ status: "error", message: "This customer already has a pump with that serial number." });
-      await expect(createEquipment(formData(otherCompany.id, serialNumber))).resolves.toEqual({ status: "success", message: "Pump added." });
+      // The same serial at another customer is usually a pump that changed hands, or a typo, so it takes a tick.
+      await expect(createEquipment(formData(otherCompany.id, serialNumber))).resolves.toMatchObject({ status: "error", message: expect.stringContaining(`is already on record at Duplicate Equipment Company ${suffix}`) });
+      await expect(createEquipment(formData(otherCompany.id, serialNumber, true))).resolves.toEqual({ status: "success", message: "Pump added." });
       expect(await prisma.equipment.count({ where: { serialNumber } })).toBe(2);
       // Both pumps share the one catalog model the first of them added.
       expect(await prisma.productModel.count({ where: { name: `Duplicate Test Model ${suffix}` } })).toBe(1);

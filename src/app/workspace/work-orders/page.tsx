@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { assignableStaff } from "@/features/assignments/assign";
 import { openWorkOrderWhere } from "@/features/records/merge";
 import { requireWorkspaceUser } from "@/services/page-access";
+import { shopToday } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +41,11 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
   const assigneeId = assignee === "me" ? viewer.id : z.string().uuid().safeParse(assignee).data;
   const openOnly = firstParam(params.open) === "1";
   const overdueOnly = firstParam(params.overdue) === "1";
-  const now = new Date();
   const page = pageFromParams(params);
 
   const where: Prisma.WorkOrderWhereInput = {
     ...(openOnly || overdueOnly ? openWorkOrderWhere : {}),
-    ...(overdueOnly ? { promisedAt: { lt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) } } : {}),
+    ...(overdueOnly ? { promisedAt: { lt: shopToday() } } : {}),
     ...(assignee === "none" ? { assignedToId: null } : assigneeId ? { assignedToId: assigneeId } : {}),
     ...(status ? { customerFacingStatus: status } : {}),
     ...(condition ? { condition } : {}),
