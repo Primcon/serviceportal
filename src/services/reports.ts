@@ -67,7 +67,7 @@ function preventFormulaInjection(value: string | null | undefined) {
   return /^[=+\-@]/.test(value) ? `'${value}` : value;
 }
 
-function addSheet(workbook: ExcelJS.Workbook, name: string, headers: string[], rows: (string | number | Date | null)[][]) {
+export function addSheet(workbook: ExcelJS.Workbook, name: string, headers: string[], rows: (string | number | Date | null)[][]) {
   const sheet = workbook.addWorksheet(name);
   sheet.addRow(headers);
   for (const row of rows) {

@@ -1,62 +1,32 @@
 import Link from "next/link";
-import { z } from "zod";
-import { CustomerFacingStatus, ListKind, Prisma, WorkOrderCondition } from "@prisma/client";
-import { ArrowUpRight, ClipboardList, Plus, SlidersHorizontal } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { CustomerFacingStatus, ListKind, UserRole, WorkOrderCondition } from "@prisma/client";
+import { Bookmark, ClipboardList, Download, Plus, SlidersHorizontal, X } from "lucide-react";
+import ActionFeedbackForm from "@/components/action-feedback-form";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { buttonStyles, fieldStyles } from "@/components/ui/styles";
-import { workOrderSearchWhere } from "@/features/search/queries";
+import { WorkOrderRows } from "@/features/work-orders/components/work-order-rows";
+import { deleteWorkOrderFilter, saveWorkOrderFilter } from "@/features/work-orders/list-actions";
+import { readWorkOrderFilters } from "@/features/work-orders/list-filters";
 import { listOptions, serviceCenters } from "@/features/settings/queries";
 import { customerStatusLabels, formatEnumLabel, isElevatedPriority } from "@/lib/labels";
-import { firstParam, pageFromParams, pageWindow, type SearchParams } from "@/lib/pagination";
+import { pageFromParams, pageWindow, type SearchParams } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { assignableStaff } from "@/features/assignments/assign";
-import { openWorkOrderWhere } from "@/features/records/merge";
 import { requireWorkspaceUser } from "@/services/page-access";
-import { shopToday } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
 const pageSize = 25;
 
-function oneOf<T extends string>(values: T[], value: string | undefined) {
-  return values.includes(value as T) ? value as T : undefined;
-}
-
 export default async function WorkOrdersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const viewer = await requireWorkspaceUser();
   const params = await searchParams;
-  const search = firstParam(params.search)?.trim() ?? "";
-  const status = oneOf(Object.values(CustomerFacingStatus), firstParam(params.status));
-  const condition = oneOf(Object.values(WorkOrderCondition), firstParam(params.condition));
-  const stageId = firstParam(params.stage) ?? "";
-  const centerId = firstParam(params.center) ?? "";
-  const priority = firstParam(params.priority) ?? "";
-  // Set by the links on a customer's page, to show only that customer's work orders.
-  const companyId = z.string().uuid().safeParse(firstParam(params.company)).data;
-  // Who has the job: "me", "none" (waiting in the queue), or a staff member's ID.
-  const assignee = firstParam(params.assignee) ?? "";
-  const assigneeId = assignee === "me" ? viewer.id : z.string().uuid().safeParse(assignee).data;
-  const openOnly = firstParam(params.open) === "1";
-  const overdueOnly = firstParam(params.overdue) === "1";
+  const { search, status, condition, stageId, centerId, priority, companyId, assignee, openOnly, overdueOnly, where, filtersApplied, query } = readWorkOrderFilters(params, viewer.id);
   const page = pageFromParams(params);
 
-  const where: Prisma.WorkOrderWhereInput = {
-    ...(openOnly || overdueOnly ? openWorkOrderWhere : {}),
-    ...(overdueOnly ? { promisedAt: { lt: shopToday() } } : {}),
-    ...(assignee === "none" ? { assignedToId: null } : assigneeId ? { assignedToId: assigneeId } : {}),
-    ...(status ? { customerFacingStatus: status } : {}),
-    ...(condition ? { condition } : {}),
-    ...(stageId ? { serviceStageId: stageId } : {}),
-    ...(centerId ? { serviceCenterId: centerId } : {}),
-    ...(priority ? { priority } : {}),
-    ...(companyId ? { companyId } : {}),
-    ...(search ? workOrderSearchWhere(search) : {}),
-  };
-
-  const [total, workOrders, stages, centers, priorities, company, staff] = await Promise.all([
+  const [total, workOrders, stages, centers, priorities, company, staff, savedFilters] = await Promise.all([
     prisma.workOrder.count({ where }),
     prisma.workOrder.findMany({
       where,
@@ -81,15 +51,21 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
     listOptions(ListKind.PRIORITY),
     companyId ? prisma.company.findUnique({ where: { id: companyId }, select: { name: true } }) : null,
     assignableStaff(),
+    prisma.savedFilter.findMany({ where: { userId: viewer.id }, orderBy: { name: "asc" }, select: { id: true, name: true, query: true } }),
   ]);
-  const filtersApplied = Boolean(search || status || condition || stageId || centerId || priority || companyId || assignee || openOnly || overdueOnly);
+  const isManager = viewer.internalRole === UserRole.PORTAL_ADMINISTRATOR || viewer.internalRole === UserRole.VACTECH_MANAGER;
   // Promised dates are calendar dates stored as midnight UTC.
   const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
   return (
     <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
       <PageHeader
-        actions={<Link className={buttonStyles()} href="/workspace/work-orders/new"><Plus size={16} /> New work order</Link>}
+        actions={(
+          <>
+            {total > 0 && <a className={buttonStyles({ variant: "outline" })} href={`/workspace/work-orders/export${query ? `?${query}` : ""}`}><Download size={16} /> Download (.xlsx)</a>}
+            <Link className={buttonStyles()} href="/workspace/work-orders/new"><Plus size={16} /> New work order</Link>
+          </>
+        )}
         description="Find a repair, review its current service state, and open the complete work record."
         eyebrow="OPERATIONS"
         title="Work orders"
@@ -97,6 +73,20 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
 
       <section aria-label="Work-order filters" className="mt-6 border border-line bg-paper p-5">
         <div className="flex items-center gap-2 text-sm font-bold text-body"><SlidersHorizontal className="text-brand" size={17} /> Filter queue</div>
+        {savedFilters.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted">Saved:</span>
+            {savedFilters.map((saved) => (
+              <span className={`flex items-center border ${saved.query === query ? "border-ink bg-ink text-white" : "border-line"}`} key={saved.id}>
+                <Link className="px-2.5 py-1 font-bold" href={`/workspace/work-orders?${saved.query}`}>{saved.name}</Link>
+                <ActionFeedbackForm action={deleteWorkOrderFilter} className="contents" successMessage="Removed.">
+                  <input name="filterId" type="hidden" value={saved.id} />
+                  <button aria-label={`Remove saved filter ${saved.name}`} className="border-l border-current/20 px-1.5 py-1 opacity-60 hover:opacity-100"><X size={13} /></button>
+                </ActionFeedbackForm>
+              </span>
+            ))}
+          </div>
+        )}
         {company && <p className="mt-3 text-sm">Showing work orders for <span className="font-bold">{company.name}</span>. <Link className="font-bold text-brand" href="/workspace/work-orders">Show all customers</Link></p>}
         <form className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7" method="get">
           {companyId && <input name="company" type="hidden" value={companyId} />}
@@ -131,30 +121,36 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
             <p className="ml-auto self-center text-sm font-bold text-muted">{total} work order{total === 1 ? "" : "s"}</p>
           </div>
         </form>
+        {filtersApplied && !savedFilters.some((saved) => saved.query === query) && (
+          <ActionFeedbackForm action={saveWorkOrderFilter} className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4" feedbackClassName="w-full" resetOnSuccess>
+            <input name="query" type="hidden" value={query} />
+            <label className="sr-only" htmlFor="saved-filter-name">Name for this filter</label>
+            <input className={`${fieldStyles} max-w-64`} id="saved-filter-name" maxLength={60} name="name" placeholder="Name, such as Rush jobs at AZ" required />
+            <button className={buttonStyles({ variant: "outline", size: "sm" })}><Bookmark size={15} /> Save this filter</button>
+          </ActionFeedbackForm>
+        )}
       </section>
 
       <section className="mt-6 border-y border-line bg-paper">
-        {workOrders.length ? workOrders.map((workOrder) => (
-          <Link className="group grid gap-4 border-b border-line px-5 py-5 last:border-b-0 hover:bg-surface sm:grid-cols-[minmax(0,1fr)_auto]" href={`/workspace/work-orders/${workOrder.id}`} key={workOrder.id}>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-bold text-brand">{workOrder.workOrderNumber}</p>
-                {isElevatedPriority(workOrder.priority) && <Badge tone="danger">{workOrder.priority}</Badge>}
-                {workOrder.condition !== "NORMAL" && <Badge tone="outline">{formatEnumLabel(workOrder.condition)}</Badge>}
-              </div>
-              <h2 className="mt-1 text-lg font-bold group-hover:text-brand">{workOrder.summary}</h2>
-              <p className="mt-2 text-sm text-muted">{workOrder.company.name} · {workOrder.equipment.productModel} · Serial {workOrder.equipment.serialNumber}</p>
-            </div>
-            <div className="flex items-start gap-3 sm:text-right">
-              <div>
-                <p className="font-bold">{workOrder.serviceStage.displayName}</p>
-                <p className="mt-1 text-sm text-muted">{customerStatusLabels[workOrder.customerFacingStatus]}{workOrder.promisedAt && ` · Promised ${dateFormat.format(workOrder.promisedAt)}`}</p>
-                {workOrder.assignedTo && <p className="mt-1 text-sm text-muted">With {workOrder.assignedTo.id === viewer.id ? "you" : workOrder.assignedTo.displayName}</p>}
-              </div>
-              <ArrowUpRight className="mt-1 text-brand" size={18} />
-            </div>
-          </Link>
-        )) : (
+        {workOrders.length ? (
+          <WorkOrderRows
+            isManager={isManager}
+            rows={workOrders.map((workOrder) => ({
+              id: workOrder.id,
+              number: workOrder.workOrderNumber,
+              summary: workOrder.summary,
+              detail: `${workOrder.company.name} · ${workOrder.equipment.productModel} · Serial ${workOrder.equipment.serialNumber}`,
+              priority: isElevatedPriority(workOrder.priority) ? workOrder.priority : null,
+              condition: workOrder.condition === "NORMAL" ? null : formatEnumLabel(workOrder.condition),
+              stage: workOrder.serviceStage.displayName,
+              status: `${customerStatusLabels[workOrder.customerFacingStatus]}${workOrder.promisedAt ? ` · Promised ${dateFormat.format(workOrder.promisedAt)}` : ""}`,
+              with: workOrder.assignedTo ? `With ${workOrder.assignedTo.id === viewer.id ? "you" : workOrder.assignedTo.displayName}` : null,
+            }))}
+            staff={staff.map((person) => ({ id: person.id, name: person.displayName }))}
+            stages={stages.map((stage) => ({ id: stage.id, name: stage.displayName }))}
+            viewerId={viewer.id}
+          />
+        ) : (
           <div className="p-5">
             <EmptyState
               description={filtersApplied ? "Change or clear the filters to broaden the queue." : "New repair records will appear here."}

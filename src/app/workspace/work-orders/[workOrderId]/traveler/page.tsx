@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { getWorkOrderChecklist, initials } from "@/features/checklists/checklist";
 import { PrintButton } from "@/features/traveler/print-button";
 import { qrCodeDataUri, workOrderAddress } from "@/features/traveler/qr";
-import { copperClassificationLabels, isElevatedPriority, partsKitLabels } from "@/lib/labels";
+import { copperClassificationLabels, hasContaminants, isElevatedPriority, partsKitLabels } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
 import { shopTimeZone } from "@/lib/dates";
@@ -67,7 +67,7 @@ export default async function TravelerPage({ params }: { params: Promise<{ workO
   const warning = [
     workOrder.warrantyDecision && `Warranty claim (${workOrder.warrantyDecision.toLowerCase()})`,
     workOrder.copperClassification !== "UNKNOWN" && copperClassificationLabels[workOrder.copperClassification].toUpperCase(),
-    workOrder.contaminants && `Contaminants: ${workOrder.contaminants}`,
+    hasContaminants(workOrder.contaminants) && `Contaminants: ${workOrder.contaminants}`,
     workOrder.reasonForService && `Reason: ${workOrder.reasonForService}`,
   ].filter(Boolean).join(" · ");
   const contact = [workOrder.customerContactName, workOrder.customerContactPhone, workOrder.customerContactEmail].filter(Boolean).join(" · ");
