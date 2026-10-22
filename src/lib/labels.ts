@@ -64,3 +64,12 @@ export const partsKitLabels: Record<PartsKit, string> = {
   MINOR: "Minor kit",
   MAJOR: "Major kit",
 };
+
+/** What people type in Contaminants when there are none: NA, N/A, none, nil, a dash, and so on. */
+const noContaminants = /^(n\/?a|n\.a\.?|none( known)?|no|nil|null|not applicable|-+|0)$/;
+
+/** True when the Contaminants field names something real, so the handling warning is worth showing. */
+export function hasContaminants(text: string | null | undefined) {
+  const value = text?.trim().toLowerCase() ?? "";
+  return Boolean(value) && !noContaminants.test(value);
+}

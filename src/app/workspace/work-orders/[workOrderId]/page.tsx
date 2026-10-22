@@ -28,7 +28,7 @@ import { TimelineList } from "@/features/work-orders/components/timeline-list";
 import { getInternalWorkOrder, listActiveServiceStages } from "@/features/work-orders/internal-queries";
 import { buildTimeline } from "@/features/work-orders/timeline";
 import { listOptions, serviceCenters } from "@/features/settings/queries";
-import { copperClassificationLabels, customerStatusLabels, documentTypeLabels, formatEnumLabel, isElevatedPriority, partsKitLabels } from "@/lib/labels";
+import { copperClassificationLabels, customerStatusLabels, documentTypeLabels, formatEnumLabel, hasContaminants, isElevatedPriority, partsKitLabels } from "@/lib/labels";
 import { firstParam, type SearchParams } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { requireWorkspaceUser } from "@/services/page-access";
@@ -117,7 +117,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
   const isMine = workOrder.assignedToId === viewer.id;
   const daysInStage = wholeDaysSince(workOrder.stageEnteredAt);
   const signedSteps = checklist?.steps.filter((step) => step.record).length ?? 0;
-  const handlingWarning = workOrder.copperClassification !== "UNKNOWN" || workOrder.contaminants;
+  const handlingWarning = workOrder.copperClassification !== "UNKNOWN" || hasContaminants(workOrder.contaminants);
   // Warranty: this repair's own cover, and whether the pump came back inside the cover of its last repair.
   const today = shopToday();
   const ownWarranty = warrantyState(workOrder.warrantyEndsAt, today);
@@ -198,7 +198,7 @@ export default async function InternalWorkOrderPage({ params, searchParams }: { 
         {handlingWarning && (
           <p className="mt-5 flex items-center gap-2 border-2 border-brand bg-danger-soft px-4 py-2.5 text-sm font-bold text-danger">
             <AlertTriangle className="shrink-0" size={18} />
-            {[workOrder.copperClassification !== "UNKNOWN" && copperClassificationLabels[workOrder.copperClassification].toUpperCase(), workOrder.contaminants && `Contaminants: ${workOrder.contaminants}`].filter(Boolean).join(" · ")}
+            {[workOrder.copperClassification !== "UNKNOWN" && copperClassificationLabels[workOrder.copperClassification].toUpperCase(), hasContaminants(workOrder.contaminants) && `Contaminants: ${workOrder.contaminants}`].filter(Boolean).join(" · ")}
           </p>
         )}
       </header>

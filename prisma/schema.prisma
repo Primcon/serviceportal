@@ -232,6 +232,7 @@ model User {
   auditEvents AuditEvent[]
   reviewedRequests AccessRequest[] @relation("AccessRequestReviewer")
   notificationPreference NotificationPreference?
+  savedFilters SavedFilter[]
   notifications Notification[]
   reportSchedules ReportSchedule[] @relation("ReportScheduleCreator")
   modelDocuments ModelDocument[]
@@ -683,6 +684,18 @@ model Notification {
   @@index([userId, readAt])
   @@index([workOrderId, createdAt])
   @@index([status, nextAttemptAt])
+}
+
+/// A filter of the work order list a staff member saved under a name, such as "Rush jobs, not yet quoted". Only they see it.
+model SavedFilter {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  name String
+  /// The list's query string, such as "priority=Rush&open=1".
+  query String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, name])
 }
 
 model ReportSchedule {
